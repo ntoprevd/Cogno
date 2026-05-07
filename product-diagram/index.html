@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cogno - Final Perfect Version</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        cogno: {
+                            primary: '#E66A3C',
+                            bg: '#FEFAF5', // 聊天背景奶油白
+                            surface: '#FFFFFF', // 标题栏纯白
+                            userBubble: '#F3E8E1',
+                            text: '#2C2A27',
+                            muted: '#9B9188',
+                            line: '#EFE9E4'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f0f2f5; }
+        
+        .phone-shell {
+            width: 390px; height: 844px;
+            background: #FEFAF5; 
+            border-radius: 50px;
+            border: 9px solid #1a1a1a;
+            position: relative;
+            margin: 20px auto;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* 彻底消除输入状态的所有边框和阴影 */
+        textarea:focus, input:focus {
+            outline: none !important;
+            box-shadow: none !important;
+            border-color: transparent !important;
+        }
+
+        .btn-tap:active { transform: scale(0.92); }
+        .transition-soft { transition: all 0.2s ease; }
+
+        /* 底部胶囊微阴影 */
+        .input-pill-shadow {
+            box-shadow: 0 8px 30px rgba(0,0,0,0.03);
+        }
+
+        /* 用户气泡的“框框”质感优化 */
+        .user-bubble-frame {
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen">
+
+    <div class="phone-shell shadow-2xl">
+        
+        <!-- 1. 状态栏 -->
+        <div class="h-12 w-full flex justify-between items-center px-8 pt-5 text-cogno-text z-30">
+            <span class="text-sm font-bold">9:41</span>
+            <div class="flex gap-2 items-center text-xs">
+                <i class="fa-solid fa-signal"></i>
+                <i class="fa-solid fa-wifi"></i>
+                <i class="fa-solid fa-battery-full text-lg"></i>
+            </div>
+        </div>
+
+        <!-- 2. 标题栏 (纯白背景复刻) -->
+        <header class="h-14 flex items-center justify-between px-6 border-b border-cogno-line bg-cogno-surface sticky top-0 z-20">
+            <div class="flex items-center gap-3">
+                <button class="btn-tap transition-soft text-cogno-primary">
+                    <i class="fa-solid fa-bars-staggered text-lg"></i>
+                </button>
+                <div class="flex items-center">
+                    <h1 class="text-sm font-bold text-cogno-text flex items-center">
+                        Cogno 
+                        <span class="bg-cogno-primary/10 text-cogno-primary text-[10px] px-2 py-0.5 rounded ml-2 font-semibold border border-cogno-primary/10">
+                            DeepSeek-V3
+                        </span>
+                    </h1>
+                </div>
+            </div>
+            <!-- 右侧仅保留羽毛 -->
+            <div class="flex items-center">
+                <button class="btn-tap transition-soft text-cogno-primary">
+                    <i class="fa-solid fa-feather-pointed text-lg"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- 3. 聊天展示区 -->
+        <main class="flex-1 overflow-y-auto px-5 py-6 no-scrollbar space-y-8 flex flex-col">
+            
+            <!-- 用户消息 (补全框框质感) -->
+            <div class="self-end max-w-[85%]">
+                <div class="user-bubble-frame bg-cogno-userBubble text-cogno-text text-[16px] leading-[24px] p-4 rounded-[22px] rounded-tr-[4px]">
+                    请帮我解释一下Java中的Synchronized关键字，并写一个简单的单例模式。
+                </div>
+                <div class="text-[12px] text-cogno-muted mt-1.5 text-right">4/28 14:20</div>
+            </div>
+
+            <!-- AI 消息 (保持无气泡风格) -->
+            <div class="self-start w-full">
+                <div class="text-[16px] leading-[24px] text-cogno-text space-y-4">
+                    <p>`synchronized` 是 Java 中的关键字，主要用于解决多线程环境下的资源竞争问题。它可以保证在同一时刻，只有一个线程可以执行特定的代码块或方法。</p>
+                    
+                    <p class="font-semibold">其核心特性包括：</p>
+                    <ul class="list-disc ml-5 space-y-1">
+                        <li>原子性：确保线程互斥访问。</li>
+                        <li>可见性：保证共享变量的修改对其他线程可见。</li>
+                    </ul>
+
+                    <div class="bg-white border border-cogno-line rounded-xl p-4 font-mono text-[13px] text-cogno-text/80 my-4 shadow-sm">
+                        public synchronized void syncMethod() { ... }
+                    </div>
+
+                    <p>虚拟线程 (Virtual Threads) 是 JDK 21 引入的轻量级线程，由 JVM 管理...</p>
+                </div>
+                <div class="text-[12px] text-cogno-muted mt-3 flex items-center gap-1.5">
+                    <i class="fa-regular fa-clock text-[10px]"></i> 4/28 14:22
+                </div>
+            </div>
+        </main>
+
+        <!-- 4. 底部输入区域 (彻底无黑框) -->
+        <footer class="px-4 pb-10 pt-2 bg-transparent relative">
+            <div class="input-pill-shadow bg-white border border-cogno-line rounded-[30px] p-1.5 flex items-center transition-soft">
+                
+                <button class="btn-tap w-11 h-11 flex items-center justify-center text-cogno-muted hover:text-cogno-primary transition-soft">
+                    <i class="fa-solid fa-plus text-xl"></i>
+                </button>
+                
+                <textarea rows="1" placeholder="输入消息..." 
+                    class="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none text-[16px] text-cogno-text px-2 py-2 no-scrollbar" 
+                    style="resize: none; outline: none; box-shadow: none;"></textarea>
+
+                <div class="flex items-center pr-1 gap-1">
+                    <button class="btn-tap w-10 h-10 flex items-center justify-center text-cogno-text/80 hover:text-cogno-primary transition-soft">
+                        <i class="fa-solid fa-microphone-lines text-lg"></i>
+                    </button>
+                    <button class="btn-tap w-10 h-10 bg-cogno-primary text-white rounded-full flex items-center justify-center shadow-md shadow-cogno-primary/20">
+                        <i class="fa-solid fa-arrow-up text-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </footer>
+
+    </div>
+
+</body>
+</html>
