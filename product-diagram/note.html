@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cogno - 笔记库</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class', // 必须有这一行
+            theme: {
+                extend: {
+                    colors: {
+                        cogno: {
+                            primary: '#E66A3C',
+                            bg: '#FEFAF5', // 聊天背景奶油白
+                            surface: '#FFFFFF', // 标题栏纯白
+                            userBubble: '#F3E8E1',
+                            text: '#2C2A27',
+                            muted: '#9B9188',
+                            line: '#EFE9E4',
+
+                            // 深色模式配色方案
+                            darkPrimary: '#F28B62',
+                            darkBg: '#141210',
+                            darkSurface: '#1E1B18',
+                            darkText: '#F0EBE6',
+                            darkLine: '#2D2824',
+                            darkUserBubble: '#2F2A26'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+        }
+
+        .phone-shell {
+            width: 390px;
+            height: 844px;
+            background: #FEFAF5;
+            border-radius: 50px;
+            border: 9px solid #1a1a1a;
+            position: relative;
+            margin: 20px auto;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+        }
+
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+
+        .btn-tap:active {
+            transform: scale(0.95);
+        }
+
+        .transition-soft {
+            transition: all 0.2s ease;
+        }
+
+        /* 置顶图标旋转 */
+        .pin-icon {
+            transform: rotate(45deg);
+        }
+    </style>
+</head>
+
+<body class="flex items-center justify-center min-h-screen">
+
+    <div class="phone-shell">
+
+        <!-- 1. 状态栏 -->
+        <div class="h-12 w-full flex justify-between items-center px-8 pt-5 text-cogno-text z-30">
+            <span class="text-sm font-bold">9:41</span>
+            <div class="flex gap-2 items-center text-xs">
+                <i class="fa-solid fa-signal"></i>
+                <i class="fa-solid fa-wifi"></i>
+                <i class="fa-solid fa-battery-full text-lg"></i>
+            </div>
+        </div>
+
+        <!-- 2. 标题栏 (重构版：移除多余控件，加入切换图标) -->
+        <header
+            class="h-14 flex items-center justify-between px-4 border-b border-cogno-line bg-cogno-surface sticky top-0 z-20">
+            <!-- 左侧：返回与标题 -->
+            <div class="flex items-center gap-1">
+                <button onclick="window.location.href='index.html'"
+                    class="btn-tap transition-soft text-cogno-primary p-2">
+                    <i class="fa-solid fa-chevron-left text-lg"></i>
+                </button>
+                <h1 id="library-title"
+                    class="text-[16px] font-bold text-cogno-text ml-1 tracking-tight transition-all duration-300">
+                    NoteLibrary</h1>
+            </div>
+
+            <!-- 右侧：搜索与切换 -->
+            <div class="flex items-center gap-1">
+                <!-- 搜索按钮 -->
+                <button onclick="toggleSearch()" class="btn-tap transition-soft text-cogno-primary p-2">
+                    <i class="fa-solid fa-magnifying-glass text-[17px]"></i>
+                </button>
+                <!-- 模式切换按钮 (单图标) -->
+                <button onclick="toggleMode()" class="btn-tap transition-soft text-cogno-primary p-2">
+                    <i class="fa-solid fa-arrow-right-arrow-left text-[17px]"></i>
+                </button>
+            </div>
+        </header>
+
+        <!-- 搜索栏容器 (默认隐藏，放在 header 下方) -->
+        <!-- 搜索栏外层容器：控制高度的平滑生长 -->
+        <div id="search-bar-wrapper"
+            class="grid grid-rows-[0fr] transition-[grid-template-rows] duration-300 ease-in-out bg-cogno-surface overflow-hidden">
+            <!-- 内层容器：包装内容以确保 min-h-0 -->
+            <div class="min-h-0 border-b border-cogno-line">
+                <div class="px-5 py-3">
+                    <div class="bg-cogno-bg rounded-xl flex items-center px-3 py-2">
+                        <i class="fa-solid fa-magnifying-glass text-cogno-muted text-xs mr-2"></i>
+                        <input type="text" id="note-search-input" placeholder="搜索笔记标题或内容..."
+                            class="bg-transparent border-none text-[14px] w-full focus:outline-none text-cogno-text">
+                    </div>
+                </div>
+            </div>
+
+            <!-- 4. 悬浮新建按钮 (FAB) -->
+            <!-- 4. 悬浮新建按钮 (FAB) - 优化后的位置 -->
+            <button
+                class="absolute bottom-20 right-10 w-14 h-14 bg-cogno-primary text-white rounded-full flex items-center justify-center shadow-lg shadow-cogno-primary/40 btn-tap transition-soft z-40">
+                <i class="fa-solid fa-plus text-2xl"></i>
+            </button>
+        </div>
+
+        <!-- 3. 笔记列表区域 (精简卡片流) -->
+        <main class="flex-1 overflow-y-auto px-5 py-4 no-scrollbar space-y-3">
+
+            <!-- 置顶笔记条目示例 -->
+
+            <div onclick="window.location.href='note-detail.html'"
+                class="cursor-pointer bg-white border border-cogno-line rounded-[18px] px-4 py-3.5 shadow-sm btn-tap transition-soft">
+                <div class="flex justify-between items-start">
+                    <h3 class="text-[15px] font-bold text-cogno-text truncate pr-4">Java 并发编程与单例模式深度解析</h3>
+                    <i class="fa-solid fa-thumbtack text-cogno-primary text-[10px] pin-icon mt-1"></i>
+                </div>
+                <p class="text-[12px] text-cogno-muted truncate mt-0.5">
+                    Synchronized 关键字在 Java 中用于解决资源竞争，其底层逻辑涉及 Monitor 机制...
+                </p>
+                <div class="text-right mt-1.5">
+                    <span class="text-[9px] text-cogno-muted uppercase tracking-wider font-medium">4/28 14:22</span>
+                </div>
+            </div>
+
+            <!-- 普通笔记条目示例 1 -->
+
+            <div onclick="window.location.href='note-detail.html'"
+                class="cursor-pointer bg-white border border-cogno-line rounded-[18px] px-4 py-3.5 shadow-sm btn-tap transition-soft">
+                <div class="flex justify-between items-start">
+                    <h3 class="text-[15px] font-bold text-cogno-text truncate">Web 安全基础：从 SQL 注入到 XSS</h3>
+                </div>
+                <p class="text-[12px] text-cogno-muted truncate mt-0.5">
+                    汇总了来自“安全审计”和“日常学习”两个对话中的原子知识点...
+                </p>
+                <div class="text-right mt-1.5">
+                    <span class="text-[9px] text-cogno-muted uppercase tracking-wider font-medium">昨天 18:30</span>
+                </div>
+            </div>
+
+            <!-- 普通笔记条目示例 2 -->
+            <div onclick="window.location.href='note-detail.html'"
+                class="cursor-pointer bg-white border border-cogno-line rounded-[18px] px-4 py-3.5 shadow-sm btn-tap transition-soft">
+                <div class="flex justify-between items-start">
+                    <h3 class="text-[15px] font-bold text-cogno-text truncate">DeepSeek-V3 提示词工程优化指南</h3>
+                </div>
+                <p class="text-[12px] text-cogno-muted truncate mt-0.5">
+                    通过系统提示词（System Prompt）显著提升模型在复杂逻辑推理中的表现...
+                </p>
+                <div class="text-right mt-1.5">
+                    <span class="text-[9px] text-cogno-muted uppercase tracking-wider font-medium">前天 09:15</span>
+                </div>
+            </div>
+
+        </main>
+
+    </div>
+
+    <script>
+        let currentMode = 'session'; // 初始模式
+
+        // 1. 切换模式逻辑
+        // 修改 script 标签里的 toggleMode 函数
+        function toggleMode() {
+            const titleNode = document.getElementById('library-title');
+
+            if (currentMode === 'session') {
+                currentMode = 'topic';
+                titleNode.innerText = "NoteLibrary-Topic";    // 切换到主题库
+                // 这里后续可以触发：列表数据按主题重组渲染
+            } else {
+                currentMode = 'session';
+                titleNode.innerText = "NoteLibrary-Dialogue"; // 切换回对话库
+                // 这里后续可以触发：列表数据按对话原始顺序渲染
+            }
+
+            console.log("当前模式:", currentMode);
+        }
+
+        // 2. 搜索框显示/隐藏逻辑
+        function toggleSearch() {
+            const wrapper = document.getElementById('search-bar-wrapper');
+            const searchInput = document.getElementById('note-search-input');
+
+            // 切换 grid-rows 从 0fr 到 1fr
+            if (wrapper.classList.contains('grid-rows-[0fr]')) {
+                wrapper.classList.remove('grid-rows-[0fr]');
+                wrapper.classList.add('grid-rows-[1fr]');
+
+                // 稍微延迟一点点聚焦，等待动画开始，这样在真机上更顺滑
+                setTimeout(() => {
+                    searchInput.focus();
+                }, 150);
+            } else {
+                wrapper.classList.remove('grid-rows-[1fr]');
+                wrapper.classList.add('grid-rows-[0fr]');
+                searchInput.blur(); // 收起时取消焦点
+                searchInput.value = ""; // 清空输入
+            }
+        }
+    </script>
+</body>
+
+</html>
