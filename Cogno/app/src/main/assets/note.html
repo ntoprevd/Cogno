@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Cogno - 笔记库</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cogno: {
+                            primary: '#E66A3C', bg: '#FEFAF5', surface: '#FFFFFF',
+                            userBubble: '#F3E8E1', text: '#2C2A27', muted: '#9B9188', line: '#EFE9E4',
+                            darkPrimary: '#F28B62', darkBg: '#141210', darkSurface: '#1E1B18',
+                            darkText: '#F0EBE6', darkLine: '#2D2824', darkUserBubble: '#2F2A26'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="css/common.css">
+</head>
+<body>
+<div class="phone-shell">
+    <header class="h-14 flex items-center justify-between px-4 border-b border-cogno-line bg-cogno-surface sticky top-0 z-20">
+        <div class="flex items-center gap-1">
+            <button onclick="window.location.href='index.html'" class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-chevron-left text-lg"></i></button>
+            <h1 id="library-title" class="text-[16px] font-bold text-cogno-text ml-1 tracking-tight">NoteLibrary</h1>
+        </div>
+        <div class="flex items-center gap-1">
+            <button onclick="toggleSearch()" class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-magnifying-glass text-[17px]"></i></button>
+            <button onclick="toggleMode()" class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-arrow-right-arrow-left text-[17px]"></i></button>
+        </div>
+    </header>
+
+    <div id="search-bar-wrapper" class="grid grid-rows-[0fr] transition-[grid-template-rows] duration-300 ease-in-out bg-cogno-surface overflow-hidden">
+        <div class="min-h-0 border-b border-cogno-line">
+            <div class="px-5 py-3">
+                <div class="bg-cogno-bg rounded-xl flex items-center px-3 py-2">
+                    <i class="fa-solid fa-magnifying-glass text-cogno-muted text-xs mr-2"></i>
+                    <input type="text" id="note-search-input" placeholder="搜索笔记标题或内容..." class="bg-transparent border-none text-[14px] w-full focus:outline-none text-cogno-text">
+                </div>
+            </div>
+        </div>
+        <button class="absolute bottom-20 right-10 w-14 h-14 bg-cogno-primary text-white rounded-full flex items-center justify-center shadow-lg shadow-cogno-primary/40 btn-tap transition-soft z-40"><i class="fa-solid fa-plus text-2xl"></i></button>
+    </div>
+
+    <main class="flex-1 overflow-y-auto px-5 py-4 no-scrollbar space-y-3">
+        <div onclick="window.location.href='note-detail.html'" class="cursor-pointer bg-white border border-cogno-line rounded-[18px] px-4 py-3.5 shadow-sm btn-tap transition-soft">
+            <div class="flex justify-between items-start">
+                <h3 class="text-[15px] font-bold text-cogno-text truncate pr-4">Java 并发编程与单例模式深度解析</h3>
+                <i class="fa-solid fa-thumbtack text-cogno-primary text-[10px] pin-icon mt-1"></i>
+            </div>
+            <p class="text-[12px] text-cogno-muted truncate mt-0.5">Synchronized 关键字在 Java 中用于解决资源竞争，其底层逻辑涉及 Monitor 机制...</p>
+            <div class="text-right mt-1.5"><span class="text-[9px] text-cogno-muted uppercase tracking-wider">4/28 14:22</span></div>
+        </div>
+        <div onclick="window.location.href='note-detail.html'" class="cursor-pointer bg-white border border-cogno-line rounded-[18px] px-4 py-3.5 shadow-sm btn-tap transition-soft">
+            <div class="flex justify-between items-start"><h3 class="text-[15px] font-bold text-cogno-text truncate">Web 安全基础：从 SQL 注入到 XSS</h3></div>
+            <p class="text-[12px] text-cogno-muted truncate mt-0.5">汇总了来自“安全审计”和“日常学习”两个对话中的原子知识点...</p>
+            <div class="text-right mt-1.5"><span class="text-[9px] text-cogno-muted uppercase tracking-wider">昨天 18:30</span></div>
+        </div>
+        <div onclick="window.location.href='note-detail.html'" class="cursor-pointer bg-white border border-cogno-line rounded-[18px] px-4 py-3.5 shadow-sm btn-tap transition-soft">
+            <div class="flex justify-between items-start"><h3 class="text-[15px] font-bold text-cogno-text truncate">DeepSeek-V3 提示词工程优化指南</h3></div>
+            <p class="text-[12px] text-cogno-muted truncate mt-0.5">通过系统提示词（System Prompt）显著提升模型在复杂逻辑推理中的表现...</p>
+            <div class="text-right mt-1.5"><span class="text-[9px] text-cogno-muted uppercase tracking-wider">前天 09:15</span></div>
+        </div>
+    </main>
+</div>
+
+<script src="js/common.js"></script>
+<script src="js/note.js"></script>
+</body>
+</html>

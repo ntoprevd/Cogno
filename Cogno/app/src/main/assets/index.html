@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Cogno - 首页</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cogno: {
+                            primary: '#E66A3C', bg: '#FEFAF5', surface: '#FFFFFF',
+                            userBubble: '#F3E8E1', text: '#2C2A27', muted: '#9B9188', line: '#EFE9E4',
+                            darkPrimary: '#F28B62', darkBg: '#141210', darkSurface: '#1E1B18',
+                            darkText: '#F0EBE6', darkLine: '#2D2824', darkUserBubble: '#2F2A26'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="css/common.css">
+</head>
+<body>
+<div class="phone-shell">
+    <!-- 侧边栏 -->
+    <div id="sidebar-overlay" class="absolute inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+    <div id="sidebar-drawer" class="absolute left-0 top-0 h-full w-[85%] bg-white z-50 transform -translate-x-full invisible opacity-0 transition-all duration-300 flex flex-col sidebar-premium-shadow">
+        <div class="px-5 pt-14 pb-4 space-y-4">
+            <button onclick="window.location.href='note.html'" class="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-cogno-primary/10 text-cogno-primary btn-tap transition-soft">
+                <i class="fa-solid fa-book-bookmark text-lg"></i><span class="text-[16px] font-medium">进入笔记库</span>
+            </button>
+            <div class="relative group">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-cogno-muted text-sm"></i>
+                <input type="text" placeholder="搜索历史对话..." class="w-full bg-cogno-bg border-none rounded-xl py-2.5 pl-10 pr-4 text-[14px] text-cogno-text">
+            </div>
+        </div>
+        <div class="flex-1 overflow-y-auto no-scrollbar px-5 py-2">
+            <div class="mb-6">
+                <h3 class="px-1 text-[12px] font-medium text-cogno-muted uppercase tracking-wider mb-3">今天</h3>
+                <div class="space-y-1">
+                    <div class="history-item flex items-center justify-between p-3.5 rounded-xl bg-cogno-bg text-cogno-text btn-tap transition-soft" onclick="showContextMenu(event, this)">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                            <i class="fa-solid fa-message text-cogno-primary text-sm shrink-0"></i>
+                            <span class="text-[14px] truncate font-medium">Java Synchronized 关键字解释</span>
+                        </div>
+                        <i class="fa-solid fa-thumbtack text-cogno-primary text-[10px] rotate-45"></i>
+                    </div>
+                    <div class="history-item flex items-center justify-between p-3.5 rounded-xl text-cogno-text hover:bg-cogno-bg transition-soft btn-tap" onclick="showContextMenu(event, this)">
+                        <div class="flex items-center gap-3 overflow-hidden">
+                            <i class="fa-regular fa-message text-cogno-muted text-sm shrink-0"></i>
+                            <span class="text-[14px] truncate">DeepSeek-V3 性能评估报告</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="px-5 pb-10 pt-4 border-t border-cogno-line">
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-9 h-9 rounded-full bg-cogno-primary flex items-center justify-center text-white font-bold text-xs">JD</div>
+                    <div class="text-[15px] font-bold text-cogno-text">Jane Doe</div>
+                </div>
+                <button onclick="window.location.href='setting.html'" class="w-8 h-8 flex items-center justify-center text-cogno-muted hover:text-cogno-text hover:bg-cogno-bg rounded-lg btn-tap">
+                    <i class="fa-solid fa-ellipsis text-lg"></i>
+                </button>
+            </div>
+        </div>
+        <div id="context-menu" class="fixed hidden z-[60] w-36 bg-white border border-cogno-line shadow-xl rounded-2xl p-1.5">
+            <button class="w-full text-left px-3 py-2 text-[13px] text-cogno-text hover:bg-cogno-bg rounded-lg flex items-center gap-2"><i class="fa-regular fa-pen-to-square text-cogno-muted"></i> 重命名</button>
+            <button class="w-full text-left px-3 py-2 text-[13px] text-cogno-text hover:bg-cogno-bg rounded-lg flex items-center gap-2"><i class="fa-solid fa-thumbtack text-cogno-muted"></i> 置顶</button>
+            <div class="h-[1px] bg-cogno-line my-1"></div>
+            <button class="w-full text-left px-3 py-2 text-[13px] text-red-500 hover:bg-red-50 rounded-lg flex items-center gap-2"><i class="fa-regular fa-trash-can"></i> 删除</button>
+        </div>
+    </div>
+
+    <!-- 标题栏 -->
+    <header class="h-14 flex items-center justify-between px-4 border-b border-cogno-line bg-cogno-surface sticky top-0 z-20">
+        <div class="flex items-center gap-1">
+            <button id="menu-btn" class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-bars-staggered text-lg"></i></button>
+            <h1 class="flex items-center text-[15px] font-bold text-cogno-text ml-0.5 tracking-tight">
+                Cogno
+                <span class="bg-cogno-primary/10 text-cogno-primary text-[9px] px-1.5 py-0.5 rounded ml-1.5 font-bold border border-cogno-primary/10 leading-none">DeepSeek-V3</span>
+            </h1>
+        </div>
+        <div class="flex items-center">
+            <button class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-feather-pointed text-[17px]"></i></button>
+            <button class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-comment-medical"></i></button>
+        </div>
+    </header>
+
+    <!-- 主内容区：欢迎页 + 消息列表 -->
+    <main id="chat-container" class="flex-1 overflow-y-auto px-5 py-6 no-scrollbar relative flex flex-col">
+        <div id="welcome-view" class="absolute inset-0 flex flex-col items-center justify-center px-12 text-center transition-all duration-1000">
+            <div id="bouncing-emoji" class="text-5xl mb-10 animate-bounce-slow">✨</div>
+            <div class="min-h-[100px] flex flex-col">
+                <p id="typewriter-text" class="text-[15px] leading-[1.8] text-cogno-muted/80 font-medium tracking-wide"></p>
+            </div>
+        </div>
+        <div id="message-list" class="hidden space-y-8 flex flex-col w-full"></div>
+    </main>
+
+    <!-- 底部输入区 -->
+    <footer class="px-4 pb-10 pt-2 bg-transparent relative">
+        <div class="input-pill-shadow bg-white border border-cogno-line rounded-[30px] p-1.5 flex items-center transition-soft">
+            <button class="btn-tap w-11 h-11 flex items-center justify-center text-cogno-muted hover:text-cogno-primary"><i class="fa-solid fa-plus text-xl"></i></button>
+            <textarea rows="1" placeholder="输入消息..." class="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none text-[16px] text-cogno-text px-2 py-2 no-scrollbar" style="resize: none;"></textarea>
+            <div class="flex items-center pr-1 gap-1">
+                <button onclick="toggleVoice()" class="btn-tap w-10 h-10 flex items-center justify-center text-cogno-text/80 hover:text-cogno-primary"><i class="fa-solid fa-microphone-lines text-lg"></i></button>
+                <button class="btn-tap w-10 h-10 bg-cogno-primary text-white rounded-full flex items-center justify-center shadow-md shadow-cogno-primary/20"><i class="fa-solid fa-arrow-up text-lg"></i></button>
+            </div>
+        </div>
+    </footer>
+
+    <!-- 语音遮罩 -->
+    <div id="voice-overlay" class="absolute inset-0 bg-cogno-bg/95 z-50 flex flex-col items-center justify-end pb-20 transition-all duration-300 opacity-0 pointer-events-none">
+        <div class="flex items-end gap-1.5 h-16 mb-12">
+            <div class="w-1.5 h-8 bg-cogno-primary rounded-full animate-[bounce_1s_infinite]"></div>
+            <div class="w-1.5 h-14 bg-cogno-primary rounded-full animate-[bounce_0.8s_infinite]"></div>
+            <div class="w-1.5 h-10 bg-cogno-primary rounded-full animate-[bounce_1.2s_infinite]"></div>
+            <div class="w-1.5 h-16 bg-cogno-primary rounded-full animate-[bounce_0.9s_infinite]"></div>
+            <div class="w-1.5 h-12 bg-cogno-primary rounded-full animate-[bounce_1.1s_infinite]"></div>
+        </div>
+        <p class="text-cogno-text font-bold mb-2">正在倾听...</p>
+        <p class="text-cogno-muted text-xs mb-16">点击下方按钮完成录音</p>
+        <button onclick="toggleVoice()" class="w-20 h-20 bg-cogno-primary text-white rounded-full flex items-center justify-center shadow-2xl shadow-cogno-primary/40 btn-tap"><i class="fa-solid fa-check text-2xl"></i></button>
+    </div>
+</div>
+
+<script src="js/common.js"></script>
+<script src="js/index.js"></script>
+</body>
+</html>

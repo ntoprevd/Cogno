@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Cogno - 设置</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cogno: {
+                            primary: '#E66A3C', bg: '#FEFAF5', surface: '#FFFFFF',
+                            userBubble: '#F3E8E1', text: '#2C2A27', muted: '#9B9188', line: '#EFE9E4',
+                            darkPrimary: '#F28B62', darkBg: '#141210', darkSurface: '#1E1B18',
+                            darkText: '#F0EBE6', darkLine: '#2D2824', darkUserBubble: '#2F2A26'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="css/common.css">
+</head>
+<body>
+<div id="app-shell" class="phone-shell">
+    <header class="h-14 flex items-center px-4 bg-transparent">
+        <button onclick="window.location.href='index.html'" class="btn-tap transition-soft text-cogno-text dark:text-cogno-darkText p-2"><i class="fa-solid fa-chevron-left text-lg"></i></button>
+        <h1 class="text-[17px] font-bold text-cogno-text dark:text-cogno-darkText ml-2">设置</h1>
+    </header>
+
+    <main class="flex-1 overflow-y-auto px-5 py-2 no-scrollbar space-y-6 pb-10">
+        <!-- 个人中心 -->
+        <div class="bg-white dark:bg-cogno-darkSurface rounded-[22px] p-4 flex items-center gap-4 shadow-sm border border-transparent dark:border-cogno-darkLine">
+            <div class="w-14 h-14 rounded-full bg-cogno-primary dark:bg-cogno-darkPrimary flex items-center justify-center text-white text-xl font-bold">JD</div>
+            <div class="flex-1"><h2 class="text-[16px] font-bold text-cogno-text dark:text-cogno-darkText">Jane Doe</h2><p class="text-[12px] text-cogno-muted">jane.doe@cogno.ai</p></div>
+            <i class="fa-solid fa-chevron-right text-cogno-line dark:text-cogno-muted text-xs"></i>
+        </div>
+
+        <!-- AI 配置 -->
+        <div class="relative">
+            <h3 class="px-2 text-[12px] font-medium text-cogno-muted uppercase tracking-wider mb-2">AI 配置</h3>
+            <div class="bg-white dark:bg-cogno-darkSurface rounded-[22px] overflow-hidden shadow-sm border border-transparent dark:border-cogno-darkLine">
+                <div onclick="toggleModelMenu(event)" class="relative flex items-center justify-between px-4 py-4 border-b border-cogno-line dark:border-cogno-darkLine hover:bg-orange-50/30 dark:hover:bg-zinc-800 transition-soft cursor-pointer">
+                    <span class="text-[15px] text-cogno-text dark:text-cogno-darkText">当前模型</span>
+                    <div class="flex items-center gap-2"><span id="current-model-name" class="text-[14px] text-cogno-primary dark:text-cogno-darkPrimary font-medium">DeepSeek-V3</span><i class="fa-solid fa-chevron-right text-cogno-line dark:text-cogno-muted text-xs"></i></div>
+                    <div id="model-menu" class="menu-hide absolute right-4 top-14 w-40 bg-white dark:bg-cogno-darkSurface border border-cogno-line dark:border-cogno-darkLine rounded-2xl shadow-xl z-50 transition-all duration-200 py-1 overflow-hidden">
+                        <button onclick="selectModel('DeepSeek-V3')" class="w-full text-left px-5 py-3 text-[13px] font-medium text-cogno-text dark:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800">DeepSeek-V3</button>
+                        <button onclick="selectModel('豆包')" class="w-full text-left px-5 py-3 text-[13px] font-medium text-cogno-text dark:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800">豆包</button>
+                        <button onclick="selectModel('自定义 API')" class="w-full text-left px-5 py-3 text-[13px] font-medium text-cogno-text dark:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800 border-t border-cogno-line dark:border-cogno-darkLine">自定义 API</button>
+                    </div>
+                </div>
+                <div class="px-4 py-4">
+                    <div class="flex justify-between mb-2"><span class="text-[15px] text-cogno-text dark:text-cogno-darkText">系统提示词</span></div>
+                    <textarea class="w-full bg-cogno-bg dark:bg-cogno-darkBg rounded-xl p-3 text-[13px] text-cogno-text dark:text-cogno-darkText focus:outline-none placeholder:text-cogno-muted border-none" rows="3" placeholder="定义 AI 的角色，例如：你是一个极简主义助手..."></textarea>
+                </div>
+            </div>
+        </div>
+
+        <!-- 自定义 API 面板 -->
+        <div id="custom-api-panel">
+            <div class="space-y-6">
+                <div><h3 class="px-2 text-[12px] font-medium text-cogno-muted uppercase tracking-wider mb-2">API 配置</h3>
+                    <div class="bg-white dark:bg-cogno-darkSurface rounded-[22px] overflow-hidden shadow-sm border border-transparent dark:border-cogno-darkLine">
+                        <div class="px-4 py-4 border-b border-cogno-line dark:border-cogno-darkLine"><label class="text-[11px] text-cogno-muted block mb-1 uppercase font-bold">Model ID</label><input type="text" placeholder="gpt-4-turbo..." class="w-full bg-transparent text-[14px] text-cogno-text dark:text-cogno-darkText focus:outline-none"></div>
+                        <div class="px-4 py-4 border-b border-cogno-line dark:border-cogno-darkLine"><label class="text-[11px] text-cogno-muted block mb-1 uppercase font-bold">API Base URL</label><input type="text" value="https://api.deepseek.com/v1" class="w-full bg-transparent text-[14px] text-cogno-text dark:text-cogno-darkText focus:outline-none"></div>
+                        <div class="px-4 py-4"><label class="text-[11px] text-cogno-muted block mb-1 uppercase font-bold">API Key</label><div class="flex items-center"><input type="password" value="sk-xxxxxxxxxxxxxxxx" class="flex-1 bg-transparent text-[14px] text-cogno-text dark:text-cogno-darkText focus:outline-none"><button class="text-cogno-muted hover:text-cogno-primary"><i class="fa-regular fa-eye-slash text-xs"></i></button></div></div>
+                    </div>
+                </div>
+                <div><h3 class="px-2 text-[12px] font-medium text-cogno-muted uppercase tracking-wider mb-2">API 消耗统计 (本月)</h3>
+                    <div class="bg-white dark:bg-cogno-darkSurface rounded-[22px] p-5 shadow-sm border border-transparent dark:border-cogno-darkLine">
+                        <div class="flex justify-between items-end mb-4"><div><p class="text-[10px] text-cogno-muted uppercase font-bold">Estimated Cost</p><p class="text-2xl font-bold text-cogno-text dark:text-cogno-darkText">￥12.45</p></div><div class="text-right"><p class="text-[10px] text-cogno-muted uppercase font-bold">Total Tokens</p><p class="text-[14px] font-medium text-cogno-text dark:text-cogno-darkText">842.1k</p></div></div>
+                        <div class="w-full bg-cogno-bg dark:bg-cogno-darkBg h-2 rounded-full overflow-hidden"><div class="bg-cogno-primary dark:bg-cogno-darkPrimary h-full w-[65%] rounded-full"></div></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 显示与存储 -->
+        <div><h3 class="px-2 text-[12px] font-medium text-cogno-muted uppercase tracking-wider mb-2">显示与存储</h3>
+            <div class="bg-white dark:bg-cogno-darkSurface rounded-[22px] overflow-hidden shadow-sm border border-transparent dark:border-cogno-darkLine">
+                <div onclick="toggleDarkMode()" class="flex items-center justify-between px-4 py-4 border-b border-cogno-line dark:border-cogno-darkLine cursor-pointer btn-tap transition-soft"><span class="text-[15px] text-cogno-text dark:text-cogno-darkText">深色模式</span><i id="theme-toggle-icon" class="fa-solid fa-toggle-off text-2xl text-cogno-muted dark:text-cogno-darkPrimary"></i></div>
+                <div class="flex items-center justify-between px-4 py-4 border-b border-cogno-line dark:border-cogno-darkLine cursor-pointer btn-tap transition-soft"><span class="text-[15px] text-cogno-text dark:text-cogno-darkText">语言</span><div class="flex items-center gap-1"><span class="text-[14px] text-cogno-muted">简体中文</span><i class="fa-solid fa-chevron-right text-cogno-line dark:text-cogno-muted text-[10px]"></i></div></div>
+                <div class="flex items-center justify-between px-4 py-4 hover:bg-red-50 dark:hover:bg-red-900/20 transition-soft cursor-pointer"><span class="text-[15px] text-red-500">清理本地缓存</span><span class="text-[12px] text-cogno-muted">24.5 MB</span></div>
+            </div>
+        </div>
+
+        <div class="text-center py-4"><p class="text-[12px] text-cogno-muted">Cogno v1.1.0-stable</p><div class="flex justify-center gap-4 mt-2 text-[12px] text-cogno-primary dark:text-cogno-darkPrimary font-medium"><span>隐私协议</span><span class="text-cogno-line dark:text-cogno-darkLine">|</span><span>服务条款</span></div></div>
+    </main>
+</div>
+
+<script src="js/common.js"></script>
+<script src="js/setting.js"></script>
+</body>
+</html>

@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>Cogno - 笔记详情</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        cogno: {
+                            primary: '#E66A3C', bg: '#FEFAF5', surface: '#FFFFFF',
+                            userBubble: '#F3E8E1', text: '#2C2A27', muted: '#9B9188', line: '#EFE9E4',
+                            darkPrimary: '#F28B62', darkBg: '#141210', darkSurface: '#1E1B18',
+                            darkText: '#F0EBE6', darkLine: '#2D2824', darkUserBubble: '#2F2A26'
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="css/common.css">
+</head>
+<body>
+<div class="phone-shell">
+    <header class="h-14 flex items-center justify-between px-4 bg-cogno-bg sticky top-0 z-20">
+        <button onclick="window.location.href='note.html'" class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-chevron-left text-lg"></i></button>
+        <div class="flex items-center gap-0.5">
+            <button id="toggle-mode-btn" onclick="toggleEditMode()" class="btn-tap transition-soft text-cogno-primary p-2"><i id="mode-icon" class="fa-solid fa-pencil text-[17px]"></i></button>
+            <button onclick="window.location.href='index.html'" class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-link text-[17px]"></i></button>
+            <div class="relative">
+                <button onclick="toggleShareMenu()" class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-arrow-up-right-from-square text-[17px]"></i></button>
+                <div id="share-menu" class="menu-hide absolute right-0 mt-2 w-48 bg-white border border-cogno-line rounded-2xl shadow-xl z-50 transition-all duration-200 py-1 overflow-hidden">
+                    <button class="w-full text-left px-4 py-3 text-[13px] font-medium text-cogno-text hover:bg-cogno-bg flex items-center gap-3"><div class="w-5 flex justify-center"><i class="fa-regular fa-file-lines text-cogno-muted text-base"></i></div><span>纯文字格式分享</span></button>
+                    <button class="w-full text-left px-4 py-3 text-[13px] font-medium text-cogno-text hover:bg-cogno-bg flex items-center gap-3"><div class="w-5 flex justify-center"><i class="fa-regular fa-image text-cogno-muted text-base"></i></div><span>以图片形式分享</span></button>
+                    <button class="w-full text-left px-4 py-3 text-[13px] font-medium text-cogno-text hover:bg-cogno-bg flex items-center gap-3"><div class="w-5 flex justify-center"><i class="fa-brands fa-markdown text-cogno-muted text-base"></i></div><span>MarkDown格式</span></button>
+                </div>
+            </div>
+        </div>
+    </header>
+    <main class="flex-1 overflow-y-auto px-7 py-4 no-scrollbar">
+        <div class="mb-8 mt-2">
+            <h1 class="text-[26px] font-extrabold text-cogno-text leading-tight tracking-tight">Java 并发编程与单例模式深度解析</h1>
+            <div class="mt-3 flex items-center text-cogno-muted"><span class="text-[11px] font-medium uppercase tracking-[0.1em]">2024年4月28日 14:22</span></div>
+        </div>
+        <article class="markdown-body">
+            <p>在多线程环境下，确保线程安全是 Java 开发的核心。<code>synchronized</code> 关键字通过 JVM 内部的 Monitor 锁机制实现原子性。</p>
+            <h2>1. Synchronized 的作用</h2>
+            <p>它主要用于解决多个线程在访问共享资源时产生的冲突问题，确保同一时刻只有一个线程执行特定代码块。</p>
+            <pre><code>public synchronized void syncMethod() {\n    // 临界区代码\n}</code></pre>
+            <h2>2. 经典单例模式 (DCL)</h2>
+            <p>以下是使用“双重检查锁定”实现的单例模式，通过 <code>volatile</code> 关键字禁止指令重排：</p>
+            <pre><code>public class Singleton {\n    private static volatile Singleton instance;\n    private Singleton() {}\n\n    public static Singleton getInstance() {\n        if (instance == null) {\n            synchronized (Singleton.class) {\n                if (instance == null) {\n                    instance = new Singleton();\n                }\n            }\n        }\n        return instance;\n    }\n}</code></pre>
+        </article>
+        <div class="h-20"></div>
+    </main>
+</div>
+
+<script src="js/common.js"></script>
+<script src="js/note-detail.js"></script>
+</body>
+</html>
