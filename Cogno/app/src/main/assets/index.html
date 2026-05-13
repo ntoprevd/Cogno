@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <!-- theme-boot：在首帧绘制前同步 html.dark + 根背景，避免多页跳转时浅色闪屏（早于 common.css / DOMContentLoaded） -->
+    <style>html{background-color:#FEFAF5}html.dark,html.dark body{background-color:#141210}</style>
+    <script>try{localStorage.getItem('cogno-dark-mode')==='true'&&document.documentElement.classList.add('dark')}catch(_){}</script>
     <title>Cogno - 首页</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -27,108 +30,139 @@
     <link rel="stylesheet" href="css/common.css">
 </head>
 <body>
+<!-- .dark 由 js/common.js 的 applyDarkMode 加在本节点上；所有 dark: 工具类均依赖该祖先 -->
 <div class="phone-shell">
-    <!-- 侧边栏 -->
-    <div id="sidebar-overlay" class="absolute inset-0 bg-black/40 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
-    <div id="sidebar-drawer" class="absolute left-0 top-0 h-full w-[85%] bg-white z-50 transform -translate-x-full invisible opacity-0 transition-all duration-300 flex flex-col sidebar-premium-shadow">
+    <!-- 侧栏遮罩 -->
+    <div id="sidebar-overlay" class="absolute inset-0 bg-black/40 dark:bg-black/60 z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+    <!-- 侧栏：与 setting 卡片同级配色（darkSurface / darkLine / darkText） -->
+    <div id="sidebar-drawer" class="absolute left-0 top-0 h-full w-[85%] bg-white dark:bg-cogno-darkSurface z-50 transform -translate-x-full invisible opacity-0 transition-all duration-300 flex flex-col sidebar-premium-shadow border-r border-transparent dark:border-cogno-darkLine">
         <div class="px-5 pt-14 pb-4 space-y-4">
-            <button onclick="window.location.href='note.html'" class="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-cogno-primary/10 text-cogno-primary btn-tap transition-soft">
+            <button onclick="window.location.href='note.html'" class="w-full flex items-center gap-3 px-4 py-3.5 rounded-2xl bg-cogno-primary/10 dark:bg-cogno-darkPrimary/15 text-cogno-primary dark:text-cogno-darkPrimary btn-tap transition-soft">
                 <i class="fa-solid fa-book-bookmark text-lg"></i><span class="text-[16px] font-medium">进入笔记库</span>
             </button>
             <div class="relative group">
-                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-cogno-muted text-sm"></i>
-                <input type="text" placeholder="搜索历史对话..." class="w-full bg-cogno-bg border-none rounded-xl py-2.5 pl-10 pr-4 text-[14px] text-cogno-text">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 -translate-y-1/2 text-cogno-muted dark:text-cogno-muted text-sm"></i>
+                <input type="text" placeholder="搜索历史对话..." class="w-full bg-cogno-bg dark:bg-cogno-darkBg border-none rounded-xl py-2.5 pl-10 pr-4 text-[14px] text-cogno-text dark:text-cogno-darkText placeholder:text-cogno-muted">
             </div>
         </div>
-        <div class="flex-1 overflow-y-auto no-scrollbar px-5 py-2">
+        <div id="history-scroll-area" class="flex-1 overflow-y-auto no-scrollbar px-5 py-2">
             <div class="mb-6">
                 <h3 class="px-1 text-[12px] font-medium text-cogno-muted uppercase tracking-wider mb-3">今天</h3>
-                <div class="space-y-1">
-                    <div class="history-item flex items-center justify-between p-3.5 rounded-xl bg-cogno-bg text-cogno-text btn-tap transition-soft" onclick="showContextMenu(event, this)">
-                        <div class="flex items-center gap-3 overflow-hidden">
-                            <i class="fa-solid fa-message text-cogno-primary text-sm shrink-0"></i>
-                            <span class="text-[14px] truncate font-medium">Java Synchronized 关键字解释</span>
+                <!-- 对话行由 common.js 长按呼出菜单；data-pinned 驱动置顶样式（见 common.css） -->
+                <div id="history-items-root" class="space-y-1">
+                    <div class="history-item flex items-center justify-between gap-2 p-3.5 rounded-xl text-cogno-text dark:text-cogno-darkText transition-soft" data-pinned="true">
+                        <div class="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
+                            <i class="history-item-type-icon fa-solid fa-message text-sm shrink-0"></i>
+                            <span class="history-item-title text-[14px] truncate font-medium">Java Synchronized 关键字解释</span>
                         </div>
-                        <i class="fa-solid fa-thumbtack text-cogno-primary text-[10px] rotate-45"></i>
+                        <div class="w-5 shrink-0 flex justify-end">
+                            <i class="history-pin-icon fa-solid fa-thumbtack text-[10px] pin-icon" aria-hidden="true"></i>
+                        </div>
                     </div>
-                    <div class="history-item flex items-center justify-between p-3.5 rounded-xl text-cogno-text hover:bg-cogno-bg transition-soft btn-tap" onclick="showContextMenu(event, this)">
-                        <div class="flex items-center gap-3 overflow-hidden">
-                            <i class="fa-regular fa-message text-cogno-muted text-sm shrink-0"></i>
-                            <span class="text-[14px] truncate">DeepSeek-V3 性能评估报告</span>
+                    <div class="history-item flex items-center justify-between gap-2 p-3.5 rounded-xl text-cogno-text dark:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800/50 transition-soft" data-pinned="false">
+                        <div class="flex items-center gap-3 overflow-hidden flex-1 min-w-0">
+                            <i class="history-item-type-icon fa-regular fa-message text-sm shrink-0"></i>
+                            <span class="history-item-title text-[14px] truncate">DeepSeek-V3 性能评估报告</span>
+                        </div>
+                        <div class="w-5 shrink-0 flex justify-end">
+                            <i class="history-pin-icon fa-solid fa-thumbtack text-[10px] pin-icon invisible" aria-hidden="true"></i>
                         </div>
                     </div>
                 </div>
+                <p id="history-empty-hint" class="hidden px-1 py-8 text-center text-[13px] text-cogno-muted">暂无历史对话</p>
             </div>
         </div>
-        <div class="px-5 pb-10 pt-4 border-t border-cogno-line">
+        <div class="px-5 pb-10 pt-4 border-t border-cogno-line dark:border-cogno-darkLine">
             <div class="flex items-center justify-between">
                 <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-full bg-cogno-primary flex items-center justify-center text-white font-bold text-xs">JD</div>
-                    <div class="text-[15px] font-bold text-cogno-text">Jane Doe</div>
+                    <div class="w-9 h-9 rounded-full bg-cogno-primary dark:bg-cogno-darkPrimary flex items-center justify-center text-white font-bold text-xs">JD</div>
+                    <div class="text-[15px] font-bold text-cogno-text dark:text-cogno-darkText">Jane Doe</div>
                 </div>
-                <button onclick="window.location.href='setting.html'" class="w-8 h-8 flex items-center justify-center text-cogno-muted hover:text-cogno-text hover:bg-cogno-bg rounded-lg btn-tap">
+                <button onclick="window.location.href='setting.html'" class="w-8 h-8 flex items-center justify-center text-cogno-muted hover:text-cogno-text dark:hover:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800 rounded-lg btn-tap">
                     <i class="fa-solid fa-ellipsis text-lg"></i>
                 </button>
             </div>
         </div>
-        <div id="context-menu" class="fixed hidden z-[60] w-36 bg-white border border-cogno-line shadow-xl rounded-2xl p-1.5">
-            <button class="w-full text-left px-3 py-2 text-[13px] text-cogno-text hover:bg-cogno-bg rounded-lg flex items-center gap-2"><i class="fa-regular fa-pen-to-square text-cogno-muted"></i> 重命名</button>
-            <button class="w-full text-left px-3 py-2 text-[13px] text-cogno-text hover:bg-cogno-bg rounded-lg flex items-center gap-2"><i class="fa-solid fa-thumbtack text-cogno-muted"></i> 置顶</button>
-            <div class="h-[1px] bg-cogno-line my-1"></div>
-            <button class="w-full text-left px-3 py-2 text-[13px] text-red-500 hover:bg-red-50 rounded-lg flex items-center gap-2"><i class="fa-regular fa-trash-can"></i> 删除</button>
-        </div>
     </div>
 
-    <!-- 标题栏 -->
-    <header class="h-14 flex items-center justify-between px-4 border-b border-cogno-line bg-cogno-surface sticky top-0 z-20">
+    <!-- 浮动菜单放在抽屉外：抽屉带 transform 时，内部 fixed 会相对抽屉定位导致错位 -->
+    <div id="context-menu" class="fixed hidden z-[60] min-w-[232px] max-w-[min(300px,calc(100vw-24px))] rounded-2xl border border-cogno-line dark:border-cogno-darkLine bg-white dark:bg-cogno-darkSurface shadow-2xl py-1 overflow-hidden">
+        <button type="button" id="ctx-rename" class="flex w-full items-stretch px-0 py-0 text-left text-[15px] text-cogno-text dark:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800 active:bg-cogno-bg/80 dark:active:bg-zinc-800/80">
+            <span class="flex w-11 shrink-0 items-center justify-center text-cogno-muted"><i class="fa-regular fa-pen-to-square text-[17px]"></i></span>
+            <span class="flex flex-1 items-center py-3.5 pr-4">重命名</span>
+        </button>
+        <button type="button" id="ctx-pin" class="flex w-full items-stretch px-0 py-0 text-left text-[15px] text-cogno-text dark:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800 active:bg-cogno-bg/80 dark:active:bg-zinc-800/80">
+            <span class="flex w-11 shrink-0 items-center justify-center text-cogno-muted"><i class="fa-solid fa-thumbtack text-[15px]"></i></span>
+            <span id="ctx-pin-label" class="flex flex-1 items-center py-3.5 pr-4">置顶</span>
+        </button>
+        <button type="button" id="ctx-delete" class="flex w-full items-stretch px-0 py-0 text-left text-[15px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/25">
+            <span class="flex w-11 shrink-0 items-center justify-center text-red-500/90"><i class="fa-regular fa-trash-can text-[17px]"></i></span>
+            <span class="flex flex-1 items-center py-3.5 pr-4">删除</span>
+        </button>
+    </div>
+
+    <!-- 顶栏：与笔记列表页一致使用 surface + 底边线，深色为 darkSurface -->
+    <header class="h-14 flex items-center justify-between px-4 border-b border-cogno-line dark:border-cogno-darkLine bg-cogno-surface dark:bg-cogno-darkSurface sticky top-0 z-20">
         <div class="flex items-center gap-1">
-            <button id="menu-btn" class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-bars-staggered text-lg"></i></button>
-            <h1 class="flex items-center text-[15px] font-bold text-cogno-text ml-0.5 tracking-tight">
+            <button id="menu-btn" class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-bars-staggered text-lg"></i></button>
+            <h1 class="flex items-center text-[15px] font-bold text-cogno-text dark:text-cogno-darkText ml-0.5 tracking-tight">
                 Cogno
-                <span class="bg-cogno-primary/10 text-cogno-primary text-[9px] px-1.5 py-0.5 rounded ml-1.5 font-bold border border-cogno-primary/10 leading-none">DeepSeek-V3</span>
+                <span class="bg-cogno-primary/10 dark:bg-cogno-darkPrimary/15 text-cogno-primary dark:text-cogno-darkPrimary text-[9px] px-1.5 py-0.5 rounded ml-1.5 font-bold border border-cogno-primary/10 dark:border-cogno-darkPrimary/20 leading-none">DeepSeek-V3</span>
             </h1>
         </div>
         <div class="flex items-center">
-            <button class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-feather-pointed text-[17px]"></i></button>
-            <button class="btn-tap transition-soft text-cogno-primary p-2"><i class="fa-solid fa-comment-medical"></i></button>
+            <button class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-feather-pointed text-[17px]"></i></button>
+            <button class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-comment-medical"></i></button>
         </div>
     </header>
 
-    <!-- 主内容区：欢迎页 + 消息列表 -->
+    <!-- 主内容：背景随 shell，欢迎语文案用 muted 深色变体 -->
     <main id="chat-container" class="flex-1 overflow-y-auto px-5 py-6 no-scrollbar relative flex flex-col">
         <div id="welcome-view" class="absolute inset-0 flex flex-col items-center justify-center px-12 text-center transition-all duration-1000">
             <div id="bouncing-emoji" class="text-5xl mb-10 animate-bounce-slow">✨</div>
             <div class="min-h-[100px] flex flex-col">
-                <p id="typewriter-text" class="text-[15px] leading-[1.8] text-cogno-muted/80 font-medium tracking-wide"></p>
+                <p id="typewriter-text" class="text-[15px] leading-[1.8] text-cogno-muted/80 dark:text-cogno-darkText/70 font-medium tracking-wide"></p>
             </div>
         </div>
         <div id="message-list" class="hidden space-y-8 flex flex-col w-full"></div>
     </main>
 
-    <!-- 底部输入区 -->
-    <footer class="px-4 pb-10 pt-2 bg-transparent relative">
-        <div class="input-pill-shadow bg-white border border-cogno-line rounded-[30px] p-1.5 flex items-center transition-soft">
-            <button class="btn-tap w-11 h-11 flex items-center justify-center text-cogno-muted hover:text-cogno-primary"><i class="fa-solid fa-plus text-xl"></i></button>
-            <textarea rows="1" placeholder="输入消息..." class="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none text-[16px] text-cogno-text px-2 py-2 no-scrollbar" style="resize: none;"></textarea>
+    <!-- 底栏：pb 含安全区，避免沉浸式导航栏遮挡输入条（与 MainActivity 透明导航栏配合） -->
+    <footer class="px-4 pt-2 bg-transparent relative pb-[calc(2.5rem+env(safe-area-inset-bottom,0px))]">
+        <div class="input-pill-shadow bg-white dark:bg-cogno-darkSurface border border-cogno-line dark:border-cogno-darkLine rounded-[30px] p-1.5 flex items-center transition-soft">
+            <button class="btn-tap w-11 h-11 flex items-center justify-center text-cogno-muted hover:text-cogno-primary dark:hover:text-cogno-darkPrimary"><i class="fa-solid fa-plus text-xl"></i></button>
+            <textarea rows="1" placeholder="输入消息..." class="flex-1 bg-transparent border-none focus:ring-0 focus:outline-none text-[16px] text-cogno-text dark:text-cogno-darkText placeholder:text-cogno-muted px-2 py-2 no-scrollbar" style="resize: none;"></textarea>
             <div class="flex items-center pr-1 gap-1">
-                <button onclick="toggleVoice()" class="btn-tap w-10 h-10 flex items-center justify-center text-cogno-text/80 hover:text-cogno-primary"><i class="fa-solid fa-microphone-lines text-lg"></i></button>
-                <button class="btn-tap w-10 h-10 bg-cogno-primary text-white rounded-full flex items-center justify-center shadow-md shadow-cogno-primary/20"><i class="fa-solid fa-arrow-up text-lg"></i></button>
+                <button onclick="toggleVoice()" class="btn-tap w-10 h-10 flex items-center justify-center text-cogno-text/80 dark:text-cogno-darkText/80 hover:text-cogno-primary dark:hover:text-cogno-darkPrimary"><i class="fa-solid fa-microphone-lines text-lg"></i></button>
+                <button class="btn-tap w-10 h-10 bg-cogno-primary dark:bg-cogno-darkPrimary text-white rounded-full flex items-center justify-center shadow-md shadow-cogno-primary/20 dark:shadow-cogno-darkPrimary/25"><i class="fa-solid fa-arrow-up text-lg"></i></button>
             </div>
         </div>
     </footer>
 
     <!-- 语音遮罩 -->
-    <div id="voice-overlay" class="absolute inset-0 bg-cogno-bg/95 z-50 flex flex-col items-center justify-end pb-20 transition-all duration-300 opacity-0 pointer-events-none">
+    <div id="voice-overlay" class="absolute inset-0 bg-cogno-bg/95 dark:bg-cogno-darkBg/95 z-50 flex flex-col items-center justify-end pb-20 transition-all duration-300 opacity-0 pointer-events-none">
         <div class="flex items-end gap-1.5 h-16 mb-12">
-            <div class="w-1.5 h-8 bg-cogno-primary rounded-full animate-[bounce_1s_infinite]"></div>
-            <div class="w-1.5 h-14 bg-cogno-primary rounded-full animate-[bounce_0.8s_infinite]"></div>
-            <div class="w-1.5 h-10 bg-cogno-primary rounded-full animate-[bounce_1.2s_infinite]"></div>
-            <div class="w-1.5 h-16 bg-cogno-primary rounded-full animate-[bounce_0.9s_infinite]"></div>
-            <div class="w-1.5 h-12 bg-cogno-primary rounded-full animate-[bounce_1.1s_infinite]"></div>
+            <div class="w-1.5 h-8 bg-cogno-primary dark:bg-cogno-darkPrimary rounded-full animate-[bounce_1s_infinite]"></div>
+            <div class="w-1.5 h-14 bg-cogno-primary dark:bg-cogno-darkPrimary rounded-full animate-[bounce_0.8s_infinite]"></div>
+            <div class="w-1.5 h-10 bg-cogno-primary dark:bg-cogno-darkPrimary rounded-full animate-[bounce_1.2s_infinite]"></div>
+            <div class="w-1.5 h-16 bg-cogno-primary dark:bg-cogno-darkPrimary rounded-full animate-[bounce_0.9s_infinite]"></div>
+            <div class="w-1.5 h-12 bg-cogno-primary dark:bg-cogno-darkPrimary rounded-full animate-[bounce_1.1s_infinite]"></div>
         </div>
-        <p class="text-cogno-text font-bold mb-2">正在倾听...</p>
+        <p class="text-cogno-text dark:text-cogno-darkText font-bold mb-2">正在倾听...</p>
         <p class="text-cogno-muted text-xs mb-16">点击下方按钮完成录音</p>
-        <button onclick="toggleVoice()" class="w-20 h-20 bg-cogno-primary text-white rounded-full flex items-center justify-center shadow-2xl shadow-cogno-primary/40 btn-tap"><i class="fa-solid fa-check text-2xl"></i></button>
+        <button onclick="toggleVoice()" class="w-20 h-20 bg-cogno-primary dark:bg-cogno-darkPrimary text-white rounded-full flex items-center justify-center shadow-2xl shadow-cogno-primary/40 dark:shadow-cogno-darkPrimary/35 btn-tap"><i class="fa-solid fa-check text-2xl"></i></button>
+    </div>
+
+    <!-- 侧栏「重命名」：逻辑在 common.js initRenameDialog；仅首页存在 DOM -->
+    <div id="rename-dialog" class="fixed inset-0 z-[75] hidden flex items-end justify-center sm:items-center px-5 pb-10 pt-8 bg-black/45 dark:bg-black/55" aria-hidden="true">
+        <div id="rename-dialog-panel" role="dialog" aria-modal="true" class="rename-dialog-panel w-full max-w-[340px] rounded-[22px] border border-cogno-line dark:border-cogno-darkLine bg-white dark:bg-cogno-darkSurface p-5 shadow-2xl">
+            <h2 class="text-[17px] font-bold text-cogno-text dark:text-cogno-darkText mb-3">重命名对话</h2>
+            <input id="rename-dialog-input" type="text" maxlength="80" class="w-full rounded-xl border border-cogno-line dark:border-cogno-darkLine bg-cogno-bg dark:bg-cogno-darkBg px-3 py-3 text-[15px] text-cogno-text dark:text-cogno-darkText focus:outline-none focus:ring-2 focus:ring-cogno-primary/30 dark:focus:ring-cogno-darkPrimary/30" placeholder="对话名称" />
+            <div class="mt-5 flex gap-3">
+                <button type="button" id="rename-dialog-cancel" class="flex-1 rounded-xl border border-cogno-line dark:border-cogno-darkLine py-3 text-[15px] font-medium text-cogno-text dark:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800">取消</button>
+                <button type="button" id="rename-dialog-confirm" class="flex-1 rounded-xl bg-cogno-primary dark:bg-cogno-darkPrimary py-3 text-[15px] font-semibold text-white">确认</button>
+            </div>
+        </div>
     </div>
 </div>
 

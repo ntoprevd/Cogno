@@ -3,6 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <!-- theme-boot：首帧前同步 html.dark + 根背景，减轻多页跳转白闪（早于 common.css / DOMContentLoaded） -->
+    <style>html{background-color:#FEFAF5}html.dark,html.dark body{background-color:#141210}</style>
+    <script>try{localStorage.getItem('cogno-dark-mode')==='true'&&document.documentElement.classList.add('dark')}catch(_){}</script>
     <title>Cogno - 设置</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
@@ -44,8 +47,8 @@
         <!-- AI 配置 -->
         <div class="relative">
             <h3 class="px-2 text-[12px] font-medium text-cogno-muted uppercase tracking-wider mb-2">AI 配置</h3>
-            <div class="bg-white dark:bg-cogno-darkSurface rounded-[22px] overflow-hidden shadow-sm border border-transparent dark:border-cogno-darkLine">
-                <div onclick="toggleModelMenu(event)" class="relative flex items-center justify-between px-4 py-4 border-b border-cogno-line dark:border-cogno-darkLine hover:bg-orange-50/30 dark:hover:bg-zinc-800 transition-soft cursor-pointer">
+            <div class="settings-ai-config-card bg-white dark:bg-cogno-darkSurface rounded-[22px] overflow-hidden shadow-sm border border-cogno-line dark:border-cogno-darkLine">
+                <div onclick="toggleModelMenu(event)" class="relative flex items-center justify-between px-4 py-4 border-b border-cogno-line dark:border-cogno-darkLine hover:bg-orange-50/30 dark:hover:bg-zinc-800 cursor-pointer">
                     <span class="text-[15px] text-cogno-text dark:text-cogno-darkText">当前模型</span>
                     <div class="flex items-center gap-2"><span id="current-model-name" class="text-[14px] text-cogno-primary dark:text-cogno-darkPrimary font-medium">DeepSeek-V3</span><i class="fa-solid fa-chevron-right text-cogno-line dark:text-cogno-muted text-xs"></i></div>
                     <div id="model-menu" class="menu-hide absolute right-4 top-14 w-40 bg-white dark:bg-cogno-darkSurface border border-cogno-line dark:border-cogno-darkLine rounded-2xl shadow-xl z-50 transition-all duration-200 py-1 overflow-hidden">
@@ -80,17 +83,33 @@
             </div>
         </div>
 
-        <!-- 显示与存储 -->
+        <!-- 显示与存储：卡片边框浅色下也使用实线，避免 transparent→dark 切换时「线」从无到有像闪烁；子行关闭 transition 避免分割线颜色被过渡抽动 -->
         <div><h3 class="px-2 text-[12px] font-medium text-cogno-muted uppercase tracking-wider mb-2">显示与存储</h3>
-            <div class="bg-white dark:bg-cogno-darkSurface rounded-[22px] overflow-hidden shadow-sm border border-transparent dark:border-cogno-darkLine">
-                <div onclick="toggleDarkMode()" class="flex items-center justify-between px-4 py-4 border-b border-cogno-line dark:border-cogno-darkLine cursor-pointer btn-tap transition-soft"><span class="text-[15px] text-cogno-text dark:text-cogno-darkText">深色模式</span><i id="theme-toggle-icon" class="fa-solid fa-toggle-off text-2xl text-cogno-muted dark:text-cogno-darkPrimary"></i></div>
-                <div class="flex items-center justify-between px-4 py-4 border-b border-cogno-line dark:border-cogno-darkLine cursor-pointer btn-tap transition-soft"><span class="text-[15px] text-cogno-text dark:text-cogno-darkText">语言</span><div class="flex items-center gap-1"><span class="text-[14px] text-cogno-muted">简体中文</span><i class="fa-solid fa-chevron-right text-cogno-line dark:text-cogno-muted text-[10px]"></i></div></div>
-                <div class="flex items-center justify-between px-4 py-4 hover:bg-red-50 dark:hover:bg-red-900/20 transition-soft cursor-pointer"><span class="text-[15px] text-red-500">清理本地缓存</span><span class="text-[12px] text-cogno-muted">24.5 MB</span></div>
+            <div class="settings-display-card bg-white dark:bg-cogno-darkSurface rounded-[22px] overflow-hidden shadow-sm border border-cogno-line dark:border-cogno-darkLine">
+                <!-- 深色模式行：不要 btn-tap 整行缩放，仅切换图标；见 common.css .settings-no-tap-scale -->
+                <div onclick="toggleDarkMode()" class="settings-no-tap-scale flex items-center justify-between px-4 py-4 border-b border-cogno-line dark:border-cogno-darkLine cursor-pointer">
+                    <span class="text-[15px] text-cogno-text dark:text-cogno-darkText">深色模式</span>
+                    <i id="theme-toggle-icon" class="fa-solid fa-toggle-off text-2xl text-cogno-muted dark:text-cogno-darkPrimary"></i>
+                </div>
+                <div id="settings-language-row" onclick="openLanguageSheet()" class="settings-no-tap-scale flex items-center justify-between px-4 py-4 border-b border-cogno-line dark:border-cogno-darkLine cursor-pointer"><span class="text-[15px] text-cogno-text dark:text-cogno-darkText">语言</span><div class="flex items-center gap-1"><span id="settings-language-label" class="text-[14px] text-cogno-muted">简体中文</span><i class="fa-solid fa-chevron-right text-cogno-line dark:text-cogno-muted text-[10px]"></i></div></div>
+                <div id="settings-cache-clear-row" onclick="flashClearCacheRow()" class="settings-no-tap-scale flex items-center justify-between px-4 py-4 cursor-pointer"><span class="text-[15px] text-red-500">清理本地缓存</span><span class="text-[12px] text-cogno-muted">24.5 MB</span></div>
             </div>
         </div>
 
         <div class="text-center py-4"><p class="text-[12px] text-cogno-muted">Cogno v1.1.0-stable</p><div class="flex justify-center gap-4 mt-2 text-[12px] text-cogno-primary dark:text-cogno-darkPrimary font-medium"><span>隐私协议</span><span class="text-cogno-line dark:text-cogno-darkLine">|</span><span>服务条款</span></div></div>
     </main>
+
+    <!-- 语言选择弹层：居中；显隐用 .is-open（见 common.css .language-sheet-overlay） -->
+    <div id="language-sheet" class="language-sheet-overlay" aria-hidden="true">
+        <div id="language-sheet-panel" role="dialog" aria-modal="true" class="w-full max-w-[340px] rounded-[22px] border border-cogno-line dark:border-cogno-darkLine bg-white dark:bg-cogno-darkSurface p-5 shadow-2xl">
+            <h2 class="text-[17px] font-bold text-cogno-text dark:text-cogno-darkText text-center">选择语言</h2>
+            <div id="language-option-list" class="mt-4 max-h-[min(52vh,420px)] overflow-y-auto no-scrollbar space-y-1 rounded-xl border border-cogno-line/80 dark:border-cogno-darkLine p-1.5"></div>
+            <div class="mt-5 flex gap-3">
+                <button type="button" id="language-sheet-cancel" class="flex-1 rounded-xl border border-cogno-line dark:border-cogno-darkLine py-3 text-[15px] font-medium text-cogno-text dark:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800">取消</button>
+                <button type="button" id="language-sheet-confirm" class="flex-1 rounded-xl bg-cogno-primary dark:bg-cogno-darkPrimary py-3 text-[15px] font-semibold text-white">确认</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="js/common.js"></script>

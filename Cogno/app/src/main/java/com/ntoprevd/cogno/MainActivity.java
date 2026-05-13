@@ -1,5 +1,6 @@
 package com.ntoprevd.cogno;
 
+import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.view.View;
@@ -11,6 +12,8 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -21,22 +24,23 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        // ---------- 透明状态栏（让网页内容延伸到状态栏下方）----------
+        Window window = getWindow();
+
+        // ---------- 透明状态栏 + 内容延伸到系统栏（与 Web 端 safe-area / 透明导航栏配合）----------
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            Window window = getWindow();
             window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS);
             window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS);
-            // 状态栏背景完全透明
-            window.setStatusBarColor(android.graphics.Color.TRANSPARENT);
-            // 让应用内容布局全屏，不自动预留状态栏空间
+            window.setStatusBarColor(Color.TRANSPARENT);
             window.getDecorView().setSystemUiVisibility(
                     View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN |
-                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE |
+                            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
             );
         }
 
+        WindowCompat.setDecorFitsSystemWindows(window, false);
+
         webView = findViewById(R.id.main_webview);
-        // 关键：禁止 WebView 自动预留状态栏内边距，由网页 CSS 控制顶部间距
         webView.setFitsSystemWindows(false);
 
         WebSettings settings = webView.getSettings();
@@ -46,13 +50,21 @@ public class MainActivity extends AppCompatActivity {
         settings.setAllowFileAccess(true);
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
 
-        // ---------- 注入 JavaScript 接口，供网页调用改变状态栏图标颜色 ----------
         webView.addJavascriptInterface(new WebAppInterface(), "Android");
 
-        webView.setWebViewClient(new WebViewClient());
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                view.evaluateJavascript(
+                        "(function(){try{return localStorage.getItem('cogno-dark-mode')==='true'?1:0}catch(e){return 0}})()",
+                        value -> {
+                            boolean dark = parseDarkFlagFromJsResult(value);
+                            runOnUiThread(() -> applyThemeToSystemBars(dark));
+                        });
+            }
+        });
         webView.loadUrl("file:///android_asset/index.html");
 
-        // 返回键处理：支持 WebView 内部返回
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             @Override
             public void handleOnBackPressed() {
@@ -65,34 +77,64 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    private static boolean parseDarkFlagFromJsResult(String value) {
+        if (value == null) return false;
+        String s = value.trim();
+        return "1".equals(s) || "\"1\"".equals(s);
+    }
+
     /**
-     * JavaScript 接口类
-     * 网页可通过 window.Android.setStatusBarDarkMode(isDarkMode) 调用
+     * 同步状态栏 + 底部导航栏：导航栏背景全透明；图标/按钮颜色由 WindowInsetsController 控制。
+     * 浅色：setAppearanceLightNavigationBars(true) → 深色图标；深色：false → 浅色图标。
+     */
+    private void applyThemeToSystemBars(boolean isDark) {
+        Window window = getWindow();
+        window.setStatusBarColor(Color.TRANSPARENT);
+        window.setNavigationBarColor(Color.TRANSPARENT);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.setNavigationBarContrastEnforced(false);
+        }
+
+        WindowInsetsControllerCompat controller =
+                WindowCompat.getInsetsController(window, window.getDecorView());
+        if (controller != null) {
+            controller.setAppearanceLightStatusBars(!isDark);
+            controller.setAppearanceLightNavigationBars(!isDark);
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            View decorView = window.getDecorView();
+            int flags = decorView.getSystemUiVisibility();
+            if (isDark) {
+                flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            } else {
+                flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (isDark) {
+                    flags &= ~View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                } else {
+                    flags |= View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR;
+                }
+            }
+            decorView.setSystemUiVisibility(flags);
+        }
+    }
+
+    /**
+     * JSBridge：网页可调用 Android.setNavigationBarColor(0) 将导航栏设为完全透明（ARGB，0 = 全透明）。
      */
     private class WebAppInterface {
+        @JavascriptInterface
+        public void setNavigationBarColor(int argb) {
+            runOnUiThread(() -> getWindow().setNavigationBarColor(argb));
+        }
+
         /**
-         * 设置状态栏图标/文字颜色
-         * @param isDarkMode true: 深色模式（背景深色） -> 状态栏文字应为白色（清除 LIGHT_STATUS_BAR）
-         *                   false: 浅色模式（背景浅色） -> 状态栏文字应为黑色（添加 LIGHT_STATUS_BAR）
+         * 切换深浅主题时由网页调用：更新状态栏/导航栏前景对比度（导航栏底色仍保持透明）。
          */
         @JavascriptInterface
         public void setStatusBarDarkMode(boolean isDarkMode) {
-            // 必须切换到 UI 线程操作 View
-            runOnUiThread(() -> {
-                // Android 6.0+ 才支持动态改变状态栏文字颜色
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    View decorView = getWindow().getDecorView();
-                    int flags = decorView.getSystemUiVisibility();
-                    if (isDarkMode) {
-                        // 深色模式 -> 白色文字，清除 LIGHT_STATUS_BAR 标志
-                        flags &= ~View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-                    } else {
-                        // 浅色模式 -> 黑色文字，添加 LIGHT_STATUS_BAR 标志
-                        flags |= View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR;
-                    }
-                    decorView.setSystemUiVisibility(flags);
-                }
-            });
+            runOnUiThread(() -> applyThemeToSystemBars(isDarkMode));
         }
     }
 }

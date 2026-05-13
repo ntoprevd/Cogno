@@ -11,6 +11,12 @@ html, body {
     font-family: 'Inter', sans-serif;
 }
 
+/* 与 shell 同步：由 applyDarkMode 在 <html> 上加 .dark，避免依赖 :has（部分 WebView 不支持） */
+html.dark,
+html.dark body {
+    background-color: #141210;
+}
+
 .phone-shell {
     width: 100%;
     height: 100%;
@@ -30,9 +36,110 @@ html, body {
         padding-top: max(24px, env(safe-area-inset-top, 24px));
 }
 
-/* 深色模式皮肤（由 JS 类名控制） */
-.phone-shell.dark {
+/* 深色壳：与 html.dark 双写，便于 theme-boot 仅先打 html 时首帧即正确（见各页 head 内联脚本） */
+.phone-shell.dark,
+html.dark .phone-shell {
     background-color: #141210;
+}
+
+.phone-shell.dark .input-pill-shadow,
+html.dark .phone-shell .input-pill-shadow {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+}
+
+.phone-shell.dark .sidebar-premium-shadow,
+html.dark .phone-shell .sidebar-premium-shadow {
+    box-shadow: 12px 0 48px -8px rgba(0, 0, 0, 0.55);
+}
+
+.history-item.context-open {
+    background-color: #FEFAF5;
+}
+.phone-shell.dark .history-item.context-open,
+html.dark .phone-shell .history-item.context-open {
+    background-color: rgba(47, 42, 38, 0.85);
+}
+
+/* 侧栏对话行：置顶态底色（与原先浅色/深色卡片一致） */
+.phone-shell .history-item[data-pinned="true"] {
+    background-color: #FEFAF5;
+}
+html.dark .phone-shell .history-item[data-pinned="true"] {
+    background-color: rgba(63, 58, 54, 0.45);
+}
+
+/* 侧栏会话图标颜色：由 data-pinned 驱动，避免在 JS 里维护大量 Tailwind 文本色类 */
+.phone-shell .history-item[data-pinned="false"] .history-item-type-icon {
+    color: #9b9188;
+}
+.phone-shell .history-item[data-pinned="true"] .history-item-type-icon {
+    color: #e66a3c;
+}
+html.dark .phone-shell .history-item[data-pinned="true"] .history-item-type-icon {
+    color: #f28b62;
+}
+
+.phone-shell .history-item[data-pinned="true"] .history-pin-icon {
+    color: #e66a3c;
+}
+html.dark .phone-shell .history-item[data-pinned="true"] .history-pin-icon {
+    color: #f28b62;
+}
+
+/* 设置页「显示与存储」卡片：子行不做 CSS transition，避免切换深色时 border-color 被过渡产生闪烁感 */
+.settings-display-card > div {
+    transition-property: none;
+}
+
+/* 设置页「深色模式」等行：不要整行按压缩放（与 btn-tap 区分） */
+.settings-no-tap-scale:active {
+    transform: none;
+}
+
+/* 设置页「AI 配置」卡片：子区域不做 CSS transition，减轻分割线在切换主题时闪白 */
+.settings-ai-config-card > div {
+    transition-property: none;
+}
+
+/* 语言选择弹层（仅 setting.html）：默认隐藏，.is-open 时 flex 居中 */
+.language-sheet-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 80;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 2.5rem 1.25rem;
+    background: rgba(0, 0, 0, 0.45);
+}
+html.dark .language-sheet-overlay {
+    background: rgba(0, 0, 0, 0.55);
+}
+.language-sheet-overlay.is-open {
+    display: flex;
+}
+
+/* 清理本地缓存行：点击后短暂高亮（避免 :hover 在触控上「粘住」像残留） */
+.settings-cache-clear-row.settings-cache-flash-active {
+    background-color: rgb(254 242 242);
+}
+html.dark .phone-shell .settings-cache-clear-row.settings-cache-flash-active {
+    background-color: rgba(127, 29, 29, 0.28);
+}
+
+/* 重命名弹窗从底部滑入感（轻量） */
+.rename-dialog-panel {
+    animation: rename-dialog-in 0.22s ease-out;
+}
+@keyframes rename-dialog-in {
+    from {
+        opacity: 0;
+        transform: translateY(12px) scale(0.98);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
 }
 
 /* 滚动条隐藏 */
@@ -149,6 +256,33 @@ textarea:focus, input:focus {
     margin: 1.2rem 0;
     font-size: 13px;
     line-height: 1.6;
+}
+
+/* 笔记详情 markdown 深色：.phone-shell.dark 与 html.dark 双写 */
+.phone-shell.dark .markdown-body h2,
+html.dark .phone-shell .markdown-body h2 {
+    color: #F0EBE6;
+    border-left-color: #F28B62;
+}
+.phone-shell.dark .markdown-body p,
+html.dark .phone-shell .markdown-body p {
+    color: #C9C2BA;
+}
+.phone-shell.dark .markdown-body code,
+html.dark .phone-shell .markdown-body code {
+    background: rgba(242, 139, 98, 0.15);
+    color: #F28B62;
+}
+.phone-shell.dark .markdown-body pre,
+html.dark .phone-shell .markdown-body pre {
+    background: #0f0e0c;
+    color: #E8E4DF;
+    border: 1px solid #2D2824;
+}
+
+.phone-shell.dark .cursor-blink,
+html.dark .phone-shell .cursor-blink {
+    background-color: rgba(242, 139, 98, 0.75);
 }
 
 /* 置顶图标旋转 */
