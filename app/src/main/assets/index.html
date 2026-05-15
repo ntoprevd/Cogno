@@ -72,14 +72,18 @@
                 <p id="history-empty-hint" class="hidden px-1 py-8 text-center text-[13px] text-cogno-muted">暂无历史对话</p>
             </div>
         </div>
-        <div class="px-5 pb-10 pt-4 border-t border-cogno-line dark:border-cogno-darkLine">
+        <!--侧边栏底部用户信息块样式-->
+        <div class="px-5 pb-[calc(1.8rem+env(safe-area-inset-bottom,0px))] pt-4 border-t border-cogno-line dark:border-cogno-darkLine">
             <div class="flex items-center justify-between">
-                <div class="flex items-center gap-3">
-                    <div class="w-9 h-9 rounded-full bg-cogno-primary dark:bg-cogno-darkPrimary flex items-center justify-center text-white font-bold text-xs">JD</div>
-                    <div class="text-[15px] font-bold text-cogno-text dark:text-cogno-darkText">Jane Doe</div>
+                <div class="flex items-center gap-3">   <!-- gap 从 3 增大到 4 让间距更舒服 -->
+                    <!-- 头像容器：宽高从 w-9/h-9 增大到 w-12/h-12，内部文字从 text-xs 增大到 text-base -->
+                    <div class="w-12 h-12 rounded-full bg-cogno-primary dark:bg-cogno-darkPrimary flex items-center justify-center text-white font-bold text-base">JD</div>
+                    <!-- 用户名：从 text-[15px] 增大到 text-[18px] 或 text-lg -->
+                    <div class="text-[18px] font-bold text-cogno-text dark:text-cogno-darkText">Jane Doe</div>
                 </div>
-                <button onclick="window.location.href='setting.html'" class="w-8 h-8 flex items-center justify-center text-cogno-muted hover:text-cogno-text dark:hover:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800 rounded-lg btn-tap">
-                    <i class="fa-solid fa-ellipsis text-lg"></i>
+                <!-- 右侧按钮：图标从 text-lg 增大到 text-2xl，按钮尺寸微调 -->
+                <button onclick="window.location.href='setting.html'" class="w-9 h-9 flex items-center justify-center text-cogno-muted hover:text-cogno-text dark:hover:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800 rounded-lg btn-tap">
+                    <i class="fa-solid fa-ellipsis text-xl"></i>   <!-- text-lg → text-2xl -->
                 </button>
             </div>
         </div>
@@ -102,17 +106,17 @@
     </div>
 
     <!-- 顶栏：与笔记列表页一致使用 surface + 底边线，深色为 darkSurface -->
-    <header class="h-14 flex items-center justify-between px-4 border-b border-cogno-line dark:border-cogno-darkLine bg-cogno-surface dark:bg-cogno-darkSurface sticky top-0 z-20">
+    <header class="h-14 flex items-center justify-between px-4 bg-transparent sticky top-0 z-20">
         <div class="flex items-center gap-1">
-            <button id="menu-btn" class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-bars-staggered text-lg"></i></button>
-            <h1 class="flex items-center text-[15px] font-bold text-cogno-text dark:text-cogno-darkText ml-0.5 tracking-tight">
+            <button id="menu-btn" class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-bars-staggered text-[20px]"></i></button>
+            <h1 class="flex items-center text-[18px] font-bold text-cogno-text dark:text-cogno-darkText ml-1 tracking-tight">
                 Cogno
                 <span class="bg-cogno-primary/10 dark:bg-cogno-darkPrimary/15 text-cogno-primary dark:text-cogno-darkPrimary text-[9px] px-1.5 py-0.5 rounded ml-1.5 font-bold border border-cogno-primary/10 dark:border-cogno-darkPrimary/20 leading-none">DeepSeek-V3</span>
             </h1>
         </div>
         <div class="flex items-center">
-            <button class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-feather-pointed text-[17px]"></i></button>
-            <button class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-comment-medical"></i></button>
+            <button class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-feather-pointed text-[20px]"></i></button>
+            <button class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-comment-medical text-[20px]"></i></button>
         </div>
     </header>
 
@@ -154,7 +158,7 @@
     </div>
 
     <!-- 侧栏「重命名」：逻辑在 common.js initRenameDialog；仅首页存在 DOM -->
-    <div id="rename-dialog" class="fixed inset-0 z-[75] hidden flex items-end justify-center sm:items-center px-5 pb-10 pt-8 bg-black/45 dark:bg-black/55" aria-hidden="true">
+    <div id="rename-dialog" class="fixed inset-0 z-[75] hidden flex items-center justify-center p-5 bg-black/45 dark:bg-black/55" aria-hidden="true">
         <div id="rename-dialog-panel" role="dialog" aria-modal="true" class="rename-dialog-panel w-full max-w-[340px] rounded-[22px] border border-cogno-line dark:border-cogno-darkLine bg-white dark:bg-cogno-darkSurface p-5 shadow-2xl">
             <h2 class="text-[17px] font-bold text-cogno-text dark:text-cogno-darkText mb-3">重命名对话</h2>
             <input id="rename-dialog-input" type="text" maxlength="80" class="w-full rounded-xl border border-cogno-line dark:border-cogno-darkLine bg-cogno-bg dark:bg-cogno-darkBg px-3 py-3 text-[15px] text-cogno-text dark:text-cogno-darkText focus:outline-none focus:ring-2 focus:ring-cogno-primary/30 dark:focus:ring-cogno-darkPrimary/30" placeholder="对话名称" />

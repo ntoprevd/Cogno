@@ -31,14 +31,14 @@
 <body>
 <!-- 主题类 .dark 与 index / setting 相同，由 common.js 注入 -->
 <div class="phone-shell">
-    <header class="h-14 flex items-center justify-between px-4 border-b border-cogno-line dark:border-cogno-darkLine bg-cogno-surface dark:bg-cogno-darkSurface sticky top-0 z-20">
+    <header class="h-14 flex items-center justify-between px-4 bg-transparent sticky top-0 z-20">
         <div class="flex items-center gap-1">
-            <button onclick="window.location.href='index.html'" class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-chevron-left text-lg"></i></button>
-            <h1 id="library-title" class="text-[16px] font-bold text-cogno-text dark:text-cogno-darkText ml-1 tracking-tight">NoteLibrary</h1>
+            <button onclick="window.location.href='index.html'" class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-chevron-left text-[20px]"></i></button>
+            <h1 id="library-title" class="text-[18px] font-bold text-cogno-text dark:text-cogno-darkText ml-1 tracking-tight">NoteLibrary</h1>
         </div>
         <div class="flex items-center gap-1">
-            <button onclick="toggleSearch()" class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-magnifying-glass text-[17px]"></i></button>
-            <button onclick="toggleMode()" class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-arrow-right-arrow-left text-[17px]"></i></button>
+            <button onclick="toggleSearch()" class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-magnifying-glass text-[20px]"></i></button>
+            <button onclick="toggleMode()" class="btn-tap transition-soft text-cogno-primary dark:text-cogno-darkPrimary p-2"><i class="fa-solid fa-arrow-right-arrow-left text-[20px]"></i></button>
         </div>
     </header>
 
@@ -57,25 +57,51 @@
 
     <main class="flex-1 overflow-y-auto px-5 py-4 no-scrollbar space-y-3">
         <!-- 笔记卡片：对齐 setting 中白底卡片的深色对应物 -->
-        <div onclick="window.location.href='note-detail.html'" class="cursor-pointer bg-white dark:bg-cogno-darkSurface border border-cogno-line dark:border-cogno-darkLine rounded-[18px] px-4 py-3.5 shadow-sm dark:shadow-none btn-tap transition-soft">
+        <div onclick="window.location.href='note-detail.html'" class="note-item cursor-pointer bg-white dark:bg-cogno-darkSurface border border-cogno-line dark:border-cogno-darkLine rounded-[18px] px-4 py-3.5 shadow-sm dark:shadow-none btn-tap transition-soft" data-pinned="true">
             <div class="flex justify-between items-start">
-                <h3 class="text-[15px] font-bold text-cogno-text dark:text-cogno-darkText truncate pr-4">Java 并发编程与单例模式深度解析</h3>
-                <i class="fa-solid fa-thumbtack text-cogno-primary dark:text-cogno-darkPrimary text-[10px] pin-icon mt-1"></i>
+                <h3 class="note-item-title text-[15px] font-bold text-cogno-text dark:text-cogno-darkText truncate pr-4">Java 并发编程与单例模式深度解析</h3>
+                <i class="note-pin-icon fa-solid fa-thumbtack text-cogno-primary dark:text-cogno-darkPrimary text-[10px] pin-icon mt-1"></i>
             </div>
             <p class="text-[12px] text-cogno-muted truncate mt-0.5">Synchronized 关键字在 Java 中用于解决资源竞争，其底层逻辑涉及 Monitor 机制...</p>
             <div class="text-right mt-1.5"><span class="text-[9px] text-cogno-muted uppercase tracking-wider">4/28 14:22</span></div>
         </div>
-        <div onclick="window.location.href='note-detail.html'" class="cursor-pointer bg-white dark:bg-cogno-darkSurface border border-cogno-line dark:border-cogno-darkLine rounded-[18px] px-4 py-3.5 shadow-sm dark:shadow-none btn-tap transition-soft">
-            <div class="flex justify-between items-start"><h3 class="text-[15px] font-bold text-cogno-text dark:text-cogno-darkText truncate">Web 安全基础：从 SQL 注入到 XSS</h3></div>
+        <div onclick="window.location.href='note-detail.html'" class="note-item cursor-pointer bg-white dark:bg-cogno-darkSurface border border-cogno-line dark:border-cogno-darkLine rounded-[18px] px-4 py-3.5 shadow-sm dark:shadow-none btn-tap transition-soft" data-pinned="false">
+            <div class="flex justify-between items-start"><h3 class="note-item-title text-[15px] font-bold text-cogno-text dark:text-cogno-darkText truncate">Web 安全基础：从 SQL 注入到 XSS</h3><i class="note-pin-icon fa-solid fa-thumbtack text-cogno-primary dark:text-cogno-darkPrimary text-[10px] pin-icon mt-1 hidden"></i></div>
             <p class="text-[12px] text-cogno-muted truncate mt-0.5">汇总了来自“安全审计”和“日常学习”两个对话中的原子知识点...</p>
             <div class="text-right mt-1.5"><span class="text-[9px] text-cogno-muted uppercase tracking-wider">昨天 18:30</span></div>
         </div>
-        <div onclick="window.location.href='note-detail.html'" class="cursor-pointer bg-white dark:bg-cogno-darkSurface border border-cogno-line dark:border-cogno-darkLine rounded-[18px] px-4 py-3.5 shadow-sm dark:shadow-none btn-tap transition-soft">
-            <div class="flex justify-between items-start"><h3 class="text-[15px] font-bold text-cogno-text dark:text-cogno-darkText truncate">DeepSeek-V3 提示词工程优化指南</h3></div>
+        <div onclick="window.location.href='note-detail.html'" class="note-item cursor-pointer bg-white dark:bg-cogno-darkSurface border border-cogno-line dark:border-cogno-darkLine rounded-[18px] px-4 py-3.5 shadow-sm dark:shadow-none btn-tap transition-soft" data-pinned="false">
+            <div class="flex justify-between items-start"><h3 class="note-item-title text-[15px] font-bold text-cogno-text dark:text-cogno-darkText truncate">DeepSeek-V3 提示词工程优化指南</h3><i class="note-pin-icon fa-solid fa-thumbtack text-cogno-primary dark:text-cogno-darkPrimary text-[10px] pin-icon mt-1 hidden"></i></div>
             <p class="text-[12px] text-cogno-muted truncate mt-0.5">通过系统提示词（System Prompt）显著提升模型在复杂逻辑推理中的表现...</p>
             <div class="text-right mt-1.5"><span class="text-[9px] text-cogno-muted uppercase tracking-wider">前天 09:15</span></div>
         </div>
     </main>
+
+    <div id="note-context-menu" class="fixed hidden z-[70] min-w-[232px] max-w-[min(300px,calc(100vw-24px))] rounded-2xl border border-cogno-line dark:border-cogno-darkLine bg-white dark:bg-cogno-darkSurface shadow-2xl py-1 overflow-hidden">
+        <button type="button" id="note-ctx-rename" class="flex w-full items-stretch px-0 py-0 text-left text-[15px] text-cogno-text dark:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800 active:bg-cogno-bg/80 dark:active:bg-zinc-800/80">
+            <span class="flex w-11 shrink-0 items-center justify-center text-cogno-muted"><i class="fa-regular fa-pen-to-square text-[17px]"></i></span>
+            <span class="flex flex-1 items-center py-3.5 pr-4">重命名</span>
+        </button>
+        <button type="button" id="note-ctx-pin" class="flex w-full items-stretch px-0 py-0 text-left text-[15px] text-cogno-text dark:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800 active:bg-cogno-bg/80 dark:active:bg-zinc-800/80">
+            <span class="flex w-11 shrink-0 items-center justify-center text-cogno-muted"><i class="fa-solid fa-thumbtack text-[15px]"></i></span>
+            <span id="note-ctx-pin-label" class="flex flex-1 items-center py-3.5 pr-4">置顶</span>
+        </button>
+        <button type="button" id="note-ctx-delete" class="flex w-full items-stretch px-0 py-0 text-left text-[15px] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/25">
+            <span class="flex w-11 shrink-0 items-center justify-center text-red-500/90"><i class="fa-regular fa-trash-can text-[17px]"></i></span>
+            <span class="flex flex-1 items-center py-3.5 pr-4">删除</span>
+        </button>
+    </div>
+
+    <div id="note-rename-dialog" class="fixed inset-0 z-[80] hidden flex items-center justify-center p-5 bg-black/45 dark:bg-black/55" aria-hidden="true">
+        <div id="note-rename-dialog-panel" role="dialog" aria-modal="true" class="rename-dialog-panel w-full max-w-[340px] rounded-[22px] border border-cogno-line dark:border-cogno-darkLine bg-white dark:bg-cogno-darkSurface p-5 shadow-2xl">
+            <h2 class="text-[17px] font-bold text-cogno-text dark:text-cogno-darkText mb-3">重命名笔记</h2>
+            <input id="note-rename-dialog-input" type="text" maxlength="80" class="w-full rounded-xl border border-cogno-line dark:border-cogno-darkLine bg-cogno-bg dark:bg-cogno-darkBg px-3 py-3 text-[15px] text-cogno-text dark:text-cogno-darkText focus:outline-none focus:ring-2 focus:ring-cogno-primary/30 dark:focus:ring-cogno-darkPrimary/30" placeholder="笔记名称" />
+            <div class="mt-5 flex gap-3">
+                <button type="button" id="note-rename-dialog-cancel" class="flex-1 rounded-xl border border-cogno-line dark:border-cogno-darkLine py-3 text-[15px] font-medium text-cogno-text dark:text-cogno-darkText hover:bg-cogno-bg dark:hover:bg-zinc-800">取消</button>
+                <button type="button" id="note-rename-dialog-confirm" class="flex-1 rounded-xl bg-cogno-primary dark:bg-cogno-darkPrimary py-3 text-[15px] font-semibold text-white">确认</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <script src="js/common.js"></script>

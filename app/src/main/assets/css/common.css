@@ -55,8 +55,15 @@ html.dark .phone-shell .sidebar-premium-shadow {
 .history-item.context-open {
     background-color: #FEFAF5;
 }
+.note-item.context-open {
+    background-color: #FEFAF5;
+}
 .phone-shell.dark .history-item.context-open,
 html.dark .phone-shell .history-item.context-open {
+    background-color: rgba(47, 42, 38, 0.85);
+}
+.phone-shell.dark .note-item.context-open,
+html.dark .phone-shell .note-item.context-open {
     background-color: rgba(47, 42, 38, 0.85);
 }
 

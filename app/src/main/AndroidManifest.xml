@@ -16,7 +16,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Cogno"
-        android:usesCleartextTraffic="true" > <!-- 2. 允许明文传输（方便调试 API） -->
+        android:usesCleartextTraffic="${usesCleartextTraffic}" > <!-- Debug 可走明文调试，Release 默认禁用明文流量。 -->
 
         <activity
             android:name=".MainActivity"

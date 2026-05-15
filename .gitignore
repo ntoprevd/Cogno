@@ -1,4 +1,4 @@
-Record/
+﻿Record/
 
 # Gradle 构建系统
 .gradle/
@@ -89,3 +89,12 @@ desktop.ini
 *.tmp
 *.temp
 *.cache
+
+# 测试覆盖率报告
+*.ec
+
+# 系统或编辑器临时文件
+*.~
+
+# 备份文件
+*.bak
