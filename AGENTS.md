@@ -1,173 +1,427 @@
-# Cogno 项目说明
+# Cogno 项目交接说明
 
-## 项目概述
+## 工作规则
 
-Cogno 是一个 Android 应用原型，采用原生 Android WebView 承载本地 HTML/CSS/JavaScript 页面。当前核心场景包括 AI 对话首页、历史会话侧边栏、笔记库、笔记详情、设置页、深色模式、语言选择、模型/API 配置等前端交互。
+- 禁止批量删除文件或目录。
+- 不要使用 `del /s`、`rd /s`、`rmdir /s`、`Remove-Item -Recurse`、`rm -rf`。
+- 如需批量删除文件，停止操作并让用户手动处理。
+- 只完成用户明确提到的要求，其他代码保持原样，不随意重构。
+- 代码需要保留必要注释，说明功能、作用区域和非显而易见的实现原因。
+- 新增或重写文件保持 UTF-8。项目历史文件曾出现中文乱码，后续修改时要特别注意编码。
 
-项目现阶段定位：高保真前端原型已经具备继续接入原生后端的基础，但真实数据、Room 数据库、网络层、流式 AI 调用、语音与文件能力仍需分阶段实现。
+## 项目定位
 
-目标用户是移动端 AI 助手/学习笔记产品使用者，典型场景是对话、从对话生成/管理笔记、配置模型和界面偏好。
+Cogno 是一个 Android 应用原型，使用原生 Android WebView 承载本地 HTML/CSS/JavaScript 页面。当前目标是从高保真前端原型逐步接入原生数据层、JSBridge、网络层和 AI 能力。
+
+当前产品方向：
+
+- 首页聊天：欢迎页、对话消息列表、输入框、语音入口、侧边栏历史会话。
+- 笔记：笔记列表、笔记详情、从对话生成/管理笔记。
+- 设置：模型/API 配置、深色模式、语言选择、缓存操作。
+
+核心分工：
+
+- Web 前端负责展示、交互、动画、输入框状态、滚动位置、Markdown 展示。
+- Android 原生层负责 Room 持久化、Repository、JSBridge、网络请求、SSE 流式输出、权限、文件、语音、敏感配置。
+- `localStorage` 只用于主题、语言等低风险偏好，不作为关键业务数据源。
 
 ## 技术栈
 
-- 语言：Java、HTML、CSS、JavaScript、Gradle Kotlin DSL。
-- Android：单模块 `:app`，`namespace/applicationId` 为 `com.ntoprevd.cogno`。
-- 构建：Gradle Wrapper 9.2.1、Android Gradle Plugin 9.0.1、Java 17。
-- SDK：`minSdk 29`、`targetSdk 36`、`compileSdk 36.1`。
-- 主要依赖：AndroidX AppCompat、Material、Activity、ConstraintLayout、JUnit、AndroidX Test、Espresso。
-- 前端依赖：页面目前通过 CDN 加载 Tailwind CSS、Font Awesome、Google Fonts；正式发布前应评估本地化资源。
+- Java
+- HTML/CSS/JavaScript
+- Gradle Kotlin DSL
+- Android WebView
+- Room
+- AndroidX AppCompat / Material / Activity / ConstraintLayout
+- JUnit / AndroidX Test / Espresso
 
-## 项目目录结构说明
+构建信息：
 
-- `settings.gradle.kts`：Gradle 项目入口，声明根项目 `Cogno` 并包含 `:app` 模块。
-- `build.gradle.kts`：根构建脚本，统一声明 Android Application 插件。
-- `gradle/libs.versions.toml`：集中管理 AGP、AndroidX、测试库版本。
-- `app/build.gradle.kts`：Android 应用模块配置、SDK、版本号、依赖、Java 17 编译选项，以及 WebView 调试/发布开关。
-- `app/src/main/AndroidManifest.xml`：应用清单，声明网络和录音权限、启动 Activity、明文流量占位开关。
-- `app/src/main/java/com/ntoprevd/cogno/MainActivity.java`：原生入口 Activity，初始化 WebView，加载 `file:///android_asset/index.html`，提供 JSBridge 与系统栏同步能力。
-- `app/src/main/res/layout/activity_main.xml`：只包含一个全屏 `WebView`。
-- `app/src/main/assets/`：WebView 加载的前端页面与资源。
-- `product-diagram/`：产品高保真静态原型与设计说明，供参考，不是 Android 运行时主入口。
-- `app/src/test/`、`app/src/androidTest/`：默认示例单元测试和仪器测试。
-- `local.properties`：本机 Android SDK 路径配置，应由开发者本地生成，不应提交。
+- 单模块：`:app`
+- `namespace/applicationId`：`com.ntoprevd.cogno`
+- Gradle Wrapper：9.2.1
+- Android Gradle Plugin：9.0.1
+- Java：17
+- `minSdk 29`
+- `targetSdk 36`
+- `compileSdk 36.1`
 
-## 核心模块/组件介绍
+## 关键目录
 
-- `MainActivity`：负责沉浸式系统栏、WebView 安全配置、页面加载、返回键处理、JSBridge 协议入口。
-- `assets/index.html` + `js/index.js`：AI 对话首页，包含欢迎语打字效果、表情切换、侧边栏入口、输入栏、语音遮罩等 UI。
-- `assets/js/common.js`：跨页面公共逻辑，包括深色模式持久化、侧边栏拖拽、历史会话长按菜单、重命名弹窗、状态栏/导航栏主题同步。
-- `assets/note.html` + `js/note.js`：笔记库列表页，提供搜索栏展开和会话/主题模式切换。
-- `assets/note-detail.html` + `js/note-detail.js`：笔记详情页，包含查看/编辑图标切换和分享菜单展示。
-- `assets/setting.html` + `js/setting.js`：设置页，包含模型选择、自定义 API 面板、深色模式、语言选择弹层、本地缓存点击反馈等。
-- `assets/css/common.css`：全局样式、深色模式、Markdown 正文、菜单动画、侧边栏和设置页细节样式。
+- `app/src/main/java/com/ntoprevd/cogno/MainActivity.java`
+  - 原生入口 Activity。
+  - 初始化 WebView。
+  - 加载 `file:///android_asset/index.html`。
+  - 配置系统栏、WebView 安全策略、JSBridge 挂载。
 
-## 前后端边界
+- `app/src/main/java/com/ntoprevd/cogno/bridge/CognoJSBridge.java`
+  - 当前 JSBridge 实现。
+  - 暴露给 WebView 的对象名包括 `Android`、`chat`、`session`。
+  - 已接入 `ChatRepositoryImpl`，可创建会话、保存用户消息、查询会话和消息。
 
-当前项目采用“Web 前端负责展示与交互，原生层负责数据、网络、权限与系统能力”的分工。
+- `app/src/main/java/com/ntoprevd/cogno/data/db/`
+  - Room 数据库层。
+  - 包含 `AppDatabase`、`Converters`、DAO、Entity。
 
-- 前端负责：页面结构、视觉状态、用户交互、输入框状态、滚动位置、临时 UI 动画、Markdown 展示。
-- 原生层负责：Room 持久化、AI 网络请求、SSE 流式输出、文件选择与解析、录音/ASR、敏感配置存储、权限申请、系统栏/键盘/平台能力。
-- 前端不得直接保存关键业务数据作为唯一数据源；`localStorage` 仅用于主题、语言等低风险偏好或临时 UI 状态。
-- 原生层通过 JSBridge 向前端返回结构化数据和事件，不把数据库实体直接暴露给页面，避免未来迁移困难。
-- 长会话、流式消息、笔记增量更新应由原生层维护状态，前端只消费“追加、替换、完成、失败”等事件。
+- `app/src/main/java/com/ntoprevd/cogno/data/repository/`
+  - Repository 层。
+  - `ChatRepository` 是异步接口。
+  - `ChatRepositoryImpl` 使用单线程后台执行数据库操作，并把结果回调到主线程。
 
-## JSBridge 协议
+- `app/src/androidTest/java/com/ntoprevd/cogno/data/db/AppDatabaseInstrumentedTest.java`
+  - Room 真机仪器测试。
+  - 验证 Session 排序、Message 分页、外键级联删除。
 
-统一入口：`Android.postMessage(JSON.stringify(request))`。旧方法 `Android.setNavigationBarColor()`、`Android.setStatusBarDarkMode()` 暂时保留，后续逐步迁移到 `ui.setSystemBars`。
+- `app/src/main/assets/`
+  - WebView 加载的前端页面、样式和脚本。
 
-请求结构：
+- `product-diagram/`
+  - 高保真静态原型参考，不是 Android 运行时入口。
 
-```json
-{
-  "version": 1,
-  "requestId": "uuid-or-client-id",
-  "command": "chat.sendMessage",
-  "payload": {}
-}
+## 已完成内容
+
+### 1. 侧边栏转场修复
+
+文件：
+
+- `app/src/main/assets/js/common.js`
+
+完成点：
+
+- 修复侧边栏和主聊天界面之间过渡动画不同步的问题。
+- 统一抽屉、主视图、蒙层的动画生命周期。
+- 使用 `requestAnimationFrame`、`transitionend` 和兜底 timer 做动画收口。
+- 拖拽中断或连续点击时会清理旧动画，降低蒙层残留、灰色遮罩错位等问题。
+
+### 2. WebView 安全配置
+
+文件：
+
+- `app/src/main/java/com/ntoprevd/cogno/MainActivity.java`
+- `app/build.gradle.kts`
+- `app/src/main/AndroidManifest.xml`
+
+完成点：
+
+- 新增 `BuildConfig.WEBVIEW_DEV_MODE`。
+- Debug：允许 WebView 调试，允许明文流量，方便本地调试。
+- Release：禁用 WebView 调试，默认禁用明文流量。
+- WebView 关闭多窗口、自动弹窗、Web SQL Database、file URL 跨域、universal file URL 访问。
+- Release 混合内容使用 `MIXED_CONTENT_NEVER_ALLOW`。
+
+### 3. Room 数据库基础层
+
+文件：
+
+- `SessionEntity.java`
+- `MessageEntity.java`
+- `SessionDao.java`
+- `MessageDao.java`
+- `AppDatabase.java`
+- `Converters.java`
+
+表结构：
+
+- `sessions`
+  - `id`
+  - `title`
+  - `model_id`
+  - `pinned`
+  - `archived`
+  - `created_at`
+  - `updated_at`
+  - `last_message_preview`
+
+- `messages`
+  - `id`
+  - `session_id`
+  - `role`
+  - `content`
+  - `status`
+  - `error_code`
+  - `token_count`
+  - `created_at`
+  - `updated_at`
+
+关系：
+
+- `messages.session_id` 外键关联 `sessions.id`。
+- 删除 Session 时，对应 Message 通过 `ForeignKey.CASCADE` 自动删除。
+
+### 4. AndroidTest 真机测试
+
+文件：
+
+- `AppDatabaseInstrumentedTest.java`
+
+已验证：
+
+- 插入 Session 后，可按 `pinned DESC, updated_at DESC` 查询。
+- 插入多个 Message 后，可按 `created_at ASC` 做 `limit + offset` 分页查询。
+- 删除 Session 后，关联 Message 自动级联删除。
+
+真机验证结果：
+
+- 命令：`.\gradlew.bat :app:connectedDebugAndroidTest`
+- 设备：`23117RK66C - 14`
+- 结果：`BUILD SUCCESSFUL`
+- 测试数量：4 个测试全部通过，包含 3 个数据库测试和 1 个示例测试。
+
+### 5. Repository 异步层
+
+文件：
+
+- `ChatRepository.java`
+- `ChatRepositoryImpl.java`
+- `OnResultCallback.java`
+
+完成点：
+
+- `ChatRepository` 已改为异步接口。
+- 所有数据库操作通过 `Executors.newSingleThreadExecutor()` 在后台线程执行。
+- 结果通过 `OnResultCallback<T>` 返回。
+- 回调切回主线程，便于 JSBridge 和 UI 层安全使用。
+
+### 6. JSBridge 初版
+
+文件：
+
+- `CognoJSBridge.java`
+- `MainActivity.java`
+
+WebView 注入对象：
+
+- `Android`
+- `chat`
+- `session`
+
+已实现 JS 可调用命令：
+
+```js
+chat.createSession(title, modelId, callbackId)
+chat.sendMessage(sessionId, userContent, callbackId)
+chat.getMessages(sessionId, page, limit, callbackId)
+session.getAllSessions(callbackId)
 ```
 
-成功返回：
+也支持协议式入口：
 
-```json
-{
-  "version": 1,
-  "requestId": "uuid-or-client-id",
-  "ok": true,
-  "data": {}
-}
-```
-
-失败返回：
-
-```json
-{
-  "version": 1,
-  "requestId": "uuid-or-client-id",
-  "ok": false,
-  "error": {
-    "code": "NOT_IMPLEMENTED",
-    "message": "Command is defined but not implemented yet."
+```js
+Android.postMessage(JSON.stringify({
+  version: 1,
+  requestId: "req-1",
+  command: "chat.createSession",
+  callbackId: "cb",
+  payload: {
+    title: "测试会话",
+    modelId: "deepseek-v3"
   }
-}
+}))
 ```
 
-已定义命令：
+回调机制：
 
-- `system.getCapabilities`
-- `ui.setSystemBars`
-- `chat.createSession`
-- `chat.listSessions`
-- `chat.getMessages`
-- `chat.sendMessage`
-- `chat.cancelStream`
-- `note.list`
-- `note.get`
-- `note.save`
-- `note.generateFromSession`
-- `setting.get`
-- `setting.set`
-- `attachment.pickFile`
-- `voice.startAsr`
-- `voice.stopAsr`
+```js
+window.cb = function (res) {
+  console.log("Native result:", res)
+}
 
-错误码：
+chat.createSession("测试会话", "deepseek-v3", "cb")
+```
 
-- `INVALID_REQUEST`：请求不是合法 JSON、缺少 command、payload 不符合要求。
-- `UNSUPPORTED_VERSION`：协议版本不支持。
-- `UNKNOWN_COMMAND`：命令未定义。
-- `NOT_IMPLEMENTED`：命令已定义但尚未实现。
-- `INTERNAL_ERROR`：原生层内部异常。
+当前 `sendMessage` 仅保存用户消息，不调用 AI 网络接口，不做流式输出。保存成功后会更新 Session 的 `updatedAt` 和 `lastMessagePreview`。
 
-## WebView 安全策略
+## 当前未完成内容
 
-- Debug 构建：`BuildConfig.WEBVIEW_DEV_MODE=true`，允许 WebView 调试，Manifest 可开启明文流量，便于本地接口调试。
-- Release 构建：`BuildConfig.WEBVIEW_DEV_MODE=false`，禁用 WebView 调试，默认禁用明文流量。
-- WebView 默认关闭多窗口、自动弹窗、Web SQL Database、file URL 跨域访问、universal file URL 访问。
-- 混合内容：Debug 使用兼容模式，Release 使用 `MIXED_CONTENT_NEVER_ALLOW`。
-- `file:///android_asset/` 是正式入口；若后续需要更强的资源隔离，可迁移到 `WebViewAssetLoader`。
+### P0：下一步优先级最高
 
-## 后端开发优先级
+- 在真机 WebView console 中手动验证 JSBridge 命令：
+  - `chat.createSession`
+  - `chat.sendMessage`
+  - `chat.getMessages`
+  - `session.getAllSessions`
+- 把首页前端输入框和侧边栏会话列表接入 JSBridge。
+- 实现聊天界面状态切换：
+  - 默认显示欢迎页。
+  - 发送第一条消息后切到对话消息列表。
+  - 点击侧边栏会话后加载对应消息并切到对话界面。
+- 补 JSBridge 层测试或手动验证流程记录。
 
-P0：
+### P1：核心聊天能力
 
-- 固化 JSBridge 协议与错误码。
-- 设计 Room 表结构和实体关系。
-- 实现 Session/Message 的本地读写与前端列表/消息渲染对接。
+- 接入真实 AI 网络层。
+- 推荐使用 OkHttp/Retrofit。
+- 实现 SSE 流式输出。
+- 将 assistant 消息按状态持久化：
+  - `pending`
+  - `streaming`
+  - `completed`
+  - `failed`
+  - `cancelled`
+- 支持取消生成、失败重试。
 
-P1：
+### P2：笔记系统
 
-- 接入 Retrofit/OkHttp 和 SSE 流式输出。
-- 实现发送消息、取消生成、失败重试、生成状态持久化。
-- 实现 Note 的创建、编辑、列表、详情和来源关联。
+- 新增 Note、Theme、NoteThemeRef 等表。
+- 从会话或消息生成结构化笔记。
+- 实现笔记列表、详情、编辑与来源关联。
+- 设计提示词与增量更新策略。
 
-P2：
+### P3：语音、文件与适配
 
-- 笔记生成提示词、增量更新、主题聚合。
-- 文件选择、附件入库、PDF/文档解析。
 - 语音录制、ASR、结果回填输入框。
-
-P3：
-
+- 文件选择、附件入库、PDF/文档解析。
 - CDN 资源本地化。
 - 长会话虚拟列表或分段渲染。
-- 横屏、平板、大字体、弱网、离线体验完善。
+- 横屏、平板、大字体、弱网、离线体验。
 
-## 常见开发任务
+## 聊天界面状态切换需求
 
-- 构建 Debug APK：`.\gradlew.bat :app:assembleDebug`
-- 构建 Release APK：`.\gradlew.bat :app:assembleRelease`
-- 运行 JVM 单元测试：`.\gradlew.bat :app:testDebugUnitTest`
-- 运行 Android 仪器测试：`.\gradlew.bat :app:connectedDebugAndroidTest`
-- 新增 Android 依赖：优先在 `gradle/libs.versions.toml` 添加版本和库，再在 `app/build.gradle.kts` 引用。
-- 修改前端页面：编辑 `app/src/main/assets/` 下的 HTML/JS/CSS；需要同步原型时，再参考 `product-diagram/`。
-- 修改入口或 WebView 能力：编辑 `MainActivity.java` 和 `AndroidManifest.xml`。
+用户已确认需求：
 
-## 注意事项
+- 默认显示欢迎页。
+- 当用户发送第一条消息，切换到对话界面并显示消息气泡列表。
+- 当用户点击侧边栏已有会话，加载对应消息并切换到对话界面。
+- 切换过程应顺滑。
+- 数据由原生层 Room + Repository + JSBridge 提供。
 
-- 不要批量删除文件或目录；禁止使用 `del /s`、`rd /s`、`rmdir /s`、`Remove-Item -Recurse`、`rm -rf`。如需批量删除，先停止并让用户手动处理。
-- 只修改用户明确要求的内容，避免顺手重构无关代码。
-- 代码需要有必要注释，说明功能、作用区域和非显而易见的实现原因。
-- 项目内历史文件曾出现中文注释/文案乱码，新增或重写文件必须保持 UTF-8。
-- 前端页面依赖 CDN，离线或 WebView 网络受限时 Tailwind、图标和字体可能无法加载。
-- 设置页中的 API Key、Base URL、费用等目前是静态展示/占位内容，不要提交真实密钥；如接入真实接口，应使用安全存储和本地配置。
-- `local.properties`、签名文件、真实 API 配置属于本地/敏感信息，应由开发者自行创建并保持忽略。
+建议实现方式：
+
+- 保持单个 `index.html`。
+- 在 WebView 内通过 JS/CSS 控制欢迎页和消息列表显示隐藏。
+- 不建议每次切换都让原生层重新加载整个 WebView 页面，这样会丢 UI 状态且体验不够顺。
+
+## JSBridge 当前接口说明
+
+### 直接调用方式
+
+```js
+window.cb = function (res) {
+  console.log(res)
+}
+
+chat.createSession("测试会话", "deepseek-v3", "cb")
+session.getAllSessions("cb")
+```
+
+创建会话返回数据包含：
+
+- `id`
+- `title`
+- `modelId`
+- `pinned`
+- `archived`
+- `createdAt`
+- `updatedAt`
+- `lastMessagePreview`
+
+发送消息：
+
+```js
+chat.sendMessage("session-id", "你好", "cb")
+```
+
+返回数据包含：
+
+- `session`
+- `message`
+
+查询消息：
+
+```js
+chat.getMessages("session-id", 0, 20, "cb")
+```
+
+返回数据包含：
+
+- `sessionId`
+- `page`
+- `limit`
+- `messages`
+
+查询会话：
+
+```js
+session.getAllSessions("cb")
+```
+
+返回数据包含：
+
+- `sessions`
+
+### 协议式调用
+
+`Android.postMessage(JSON.stringify(request))` 当前可用于同步返回 `accepted`，异步结果仍通过 `callbackId` 触发前端回调。
+
+## 常用验证命令
+
+编译 Debug Java：
+
+```powershell
+.\gradlew.bat :app:compileDebugJavaWithJavac
+```
+
+编译 AndroidTest：
+
+```powershell
+.\gradlew.bat :app:compileDebugAndroidTestJavaWithJavac
+```
+
+真机运行仪器测试：
+
+```powershell
+.\gradlew.bat :app:connectedDebugAndroidTest
+```
+
+构建 Debug APK：
+
+```powershell
+.\gradlew.bat :app:assembleDebug
+```
+
+## 用户参与点
+
+用户不需要理解所有实现细节，但需要参与这些判断：
+
+- 真机上侧边栏动画是否顺滑。
+- 欢迎页切到对话界面的体验是否自然。
+- 消息气泡、字体、间距、时间显示是否符合预期。
+- 侧边栏历史会话排序、标题、预览是否符合产品感觉。
+- 设置页中模型/API 配置项是否符合实际使用习惯。
+- 后续接入 AI 服务时，提供测试用的非敏感配置或明确使用哪类模型服务。
+
+不要让用户提交真实 API Key 到仓库。真实密钥后续应走安全存储或本地配置。
+
+## 当前风险与注意事项
+
+- 前端仍依赖 CDN：Tailwind、Font Awesome、Google Fonts。离线或网络受限时样式和图标可能异常。
+- 多处历史 HTML/JS/CSS 文案仍可能存在乱码，后续改页面时需逐步修复。
+- `sendMessage` 目前只保存用户消息，没有 assistant 回复。
+- JSBridge 已可编译，但还需要在 WebView console 中手动验证真实调用链。
+- Repository 当前每个 `ChatRepositoryImpl` 实例持有一个单线程 executor，后续如果实例变多，应考虑单例或生命周期释放。
+- `AppDatabase` 当前 `exportSchema=false`，适合早期开发；正式迁移设计前应打开 schema 导出并保存迁移记录。
+
+## 给下一个 Agent 的建议路线
+
+1. 先运行：
+
+```powershell
+.\gradlew.bat :app:compileDebugJavaWithJavac :app:compileDebugAndroidTestJavaWithJavac
+```
+
+2. 如手机连接，运行：
+
+```powershell
+.\gradlew.bat :app:connectedDebugAndroidTest
+```
+
+3. 安装/启动 Debug App 后，通过 WebView console 手动验证 JSBridge。
+
+4. 验证通过后，修改 `app/src/main/assets/index.html`、`index.js`、`common.js`：
+
+- 输入框发送消息时调用 `chat.createSession` 或 `chat.sendMessage`。
+- 收到回调后渲染消息列表。
+- 从欢迎页切换到对话界面。
+- 侧边栏点击会话时调用 `chat.getMessages`。
+
+5. 再进入 AI 网络层，不要在 JSBridge 尚未稳定前直接接 SSE。

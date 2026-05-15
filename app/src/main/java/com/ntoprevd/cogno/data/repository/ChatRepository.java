@@ -6,23 +6,28 @@ import java.util.List;
 
 public interface ChatRepository {
 
-    List<SessionEntity> getAllSessions();
+    void getAllSessions(OnResultCallback<List<SessionEntity>> callback);
 
-    SessionEntity getSessionById(String id);
+    void getSessionById(String id, OnResultCallback<SessionEntity> callback);
 
-    void createSession(SessionEntity session);
+    void createSession(SessionEntity session, OnResultCallback<Void> callback);
 
-    void updateSession(SessionEntity session);
+    void updateSession(SessionEntity session, OnResultCallback<Void> callback);
 
-    void deleteSessionById(String id);
+    void deleteSessionById(String id, OnResultCallback<Void> callback);
 
-    List<MessageEntity> getMessagesBySessionId(String sessionId, int limit, int offset);
+    void getMessagesBySessionId(
+            String sessionId,
+            int limit,
+            int offset,
+            OnResultCallback<List<MessageEntity>> callback
+    );
 
-    MessageEntity getMessageById(String id);
+    void getMessageById(String id, OnResultCallback<MessageEntity> callback);
 
-    void insertMessage(MessageEntity message);
+    void insertMessage(MessageEntity message, OnResultCallback<Void> callback);
 
-    void insertMessages(List<MessageEntity> messages);
+    void insertMessages(List<MessageEntity> messages, OnResultCallback<Void> callback);
 
-    void updateMessage(MessageEntity message);
+    void updateMessage(MessageEntity message, OnResultCallback<Void> callback);
 }
