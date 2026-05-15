@@ -4,10 +4,10 @@ function toggleEditMode() {
     const icon = document.getElementById('mode-icon');
     isEditMode = !isEditMode;
     if (isEditMode) {
-        icon.className = 'fa-solid fa-eye text-[17px]';
+        icon.className = 'fa-solid fa-eye text-[20px]';
         console.log("进入编辑模式");
     } else {
-        icon.className = 'fa-solid fa-pencil text-[17px]';
+        icon.className = 'fa-solid fa-pencil text-[20px]';
         console.log("进入查看模式");
     }
 }

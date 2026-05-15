@@ -17,19 +17,12 @@ let pressStartEl = null;
 
 function openSidebar() {
     ensureSidebarPanInit();
-    setPanElementsTransition(true);
-    applyDrawerProgress(1);
-    window.setTimeout(() => setPanElementsTransition(false), 340);
+    animateDrawerTo(1);
 }
 
 function closeSidebar() {
     ensureSidebarPanInit();
-    setPanElementsTransition(true);
-    applyDrawerProgress(0);
-    window.setTimeout(() => {
-        setPanElementsTransition(false);
-        hideContextMenu();
-    }, 340);
+    animateDrawerTo(0, hideContextMenu);
 }
 
 /** 侧栏是否视为「打开」（与 _drawerProgress 一致，供长按菜单等逻辑使用） */
@@ -41,6 +34,11 @@ function isSidebarOpen() {
 let _drawerProgress = 0;
 let _sidebarPanListenersBound = false;
 let _mainChromeEls = [];
+let _panTransitionEnabled = false;
+let _panTransitionTimer = null;
+let _panAnimationFrame = null;
+let _panTransitionEndHandler = null;
+const DRAWER_TRANSITION_MS = 320;
 
 function getSidebarDrawerWidthPx() {
     if (!sidebar) return window.innerWidth * 0.85;
@@ -48,12 +46,64 @@ function getSidebarDrawerWidthPx() {
 }
 
 function setPanElementsTransition(enabled) {
-    const curve = 'transform 0.32s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.32s cubic-bezier(0.32, 0.72, 0, 1)';
+    _panTransitionEnabled = enabled;
+    const curve = `transform ${DRAWER_TRANSITION_MS}ms cubic-bezier(0.32, 0.72, 0, 1), opacity ${DRAWER_TRANSITION_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`;
     const t = enabled ? curve : 'none';
     if (sidebar) sidebar.style.transition = t;
     if (overlay) overlay.style.transition = t;
     _mainChromeEls.forEach((el) => {
         el.style.transition = t;
+    });
+}
+
+function cancelDrawerAnimationCleanup() {
+    if (_panAnimationFrame) {
+        window.cancelAnimationFrame(_panAnimationFrame);
+        _panAnimationFrame = null;
+    }
+    if (_panTransitionTimer) {
+        window.clearTimeout(_panTransitionTimer);
+        _panTransitionTimer = null;
+    }
+    if (_panTransitionEndHandler && sidebar) {
+        sidebar.removeEventListener('transitionend', _panTransitionEndHandler);
+        _panTransitionEndHandler = null;
+    }
+}
+
+/**
+ * Keep drawer, main view, and scrim on one animation lifecycle.
+ */
+function animateDrawerTo(target, afterDone) {
+    if (!sidebar || !overlay) return;
+    const next = Math.max(0, Math.min(1, target));
+
+    cancelDrawerAnimationCleanup();
+    applyDrawerProgress(_drawerProgress);
+    setPanElementsTransition(true);
+
+    let done = false;
+    const finish = () => {
+        if (done) return;
+        done = true;
+        cancelDrawerAnimationCleanup();
+        applyDrawerProgress(next);
+        setPanElementsTransition(false);
+        applyDrawerProgress(next);
+        if (typeof afterDone === 'function') afterDone();
+    };
+
+    _panTransitionEndHandler = (e) => {
+        if (e.target === sidebar && e.propertyName === 'transform') finish();
+    };
+    sidebar.addEventListener('transitionend', _panTransitionEndHandler);
+
+    _panAnimationFrame = window.requestAnimationFrame(() => {
+        _panAnimationFrame = window.requestAnimationFrame(() => {
+            _panAnimationFrame = null;
+            applyDrawerProgress(next);
+            _panTransitionTimer = window.setTimeout(finish, DRAWER_TRANSITION_MS + 80);
+        });
     });
 }
 
@@ -77,8 +127,11 @@ function applyDrawerProgress(p) {
 
     overlay.style.opacity = String(0.45 * clamped);
     overlay.style.pointerEvents = clamped > 0.03 ? 'auto' : 'none';
+    overlay.style.transform = 'translate3d(0,0,0)';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
 
-    if (clamped > 0.001) {
+    if (clamped > 0.001 || _panTransitionEnabled) {
         sidebar.classList.remove('invisible', 'opacity-0');
         sidebar.classList.add('opacity-100');
     } else {
@@ -100,6 +153,14 @@ function ensureSidebarPanInit() {
 
     sidebar.classList.remove('-translate-x-full', 'transition-all', 'duration-300');
     overlay.classList.remove('transition-opacity', 'duration-300', 'opacity-0', 'opacity-100');
+    overlay.style.left = '0';
+    overlay.style.top = '0';
+    overlay.style.right = '0';
+    overlay.style.bottom = '0';
+    overlay.style.opacity = '0';
+    overlay.style.pointerEvents = 'none';
+    overlay.style.willChange = 'opacity';
+    overlay.style.backfaceVisibility = 'hidden';
 
     const hdr = shell.querySelector(':scope > header');
     const mainEl = document.getElementById('chat-container');
@@ -109,6 +170,7 @@ function ensureSidebarPanInit() {
         el.style.willChange = 'transform';
     });
     sidebar.style.willChange = 'transform';
+    sidebar.style.backfaceVisibility = 'hidden';
 
     applyDrawerProgress(0);
 
@@ -192,6 +254,7 @@ function ensureSidebarPanInit() {
                     return;
                 }
                 pan.locked = true;
+                cancelDrawerAnimationCleanup();
                 setPanElementsTransition(false);
             }
 
@@ -233,11 +296,7 @@ function ensureSidebarPanInit() {
             else target = 1;
         }
 
-        setPanElementsTransition(true);
-        applyDrawerProgress(target);
-        window.setTimeout(() => setPanElementsTransition(false), 340);
-
-        if (target < 0.05) hideContextMenu();
+        animateDrawerTo(target, target < 0.05 ? hideContextMenu : null);
     }
 
     shell.addEventListener('touchend', finishPan, { passive: true });
