@@ -52,6 +52,10 @@ class MessageEntity(
     var tokenCount: Int?,
 
     @JvmField
+    @ColumnInfo(name = "feedback")
+    var feedback: String?,
+
+    @JvmField
     @ColumnInfo(name = "created_at")
     var createdAt: Long,
 

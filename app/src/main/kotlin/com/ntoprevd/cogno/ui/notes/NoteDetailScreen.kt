@@ -1,7 +1,10 @@
 package com.ntoprevd.cogno.ui.notes
 
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.foundation.background
-import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,47 +15,93 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.IosShare
 import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.ntoprevd.cogno.data.repository.NativeNoteRepository
 import com.ntoprevd.cogno.ui.theme.CognoBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkPrimary
+import com.ntoprevd.cogno.ui.theme.CognoDarkLine
 import com.ntoprevd.cogno.ui.theme.CognoDarkSurface
 import com.ntoprevd.cogno.ui.theme.CognoDarkText
 import com.ntoprevd.cogno.ui.theme.CognoMuted
+import com.ntoprevd.cogno.ui.theme.CognoLine
 import com.ntoprevd.cogno.ui.theme.CognoPrimary
 import com.ntoprevd.cogno.ui.theme.CognoText
+import com.ntoprevd.cogno.ui.theme.isCognoDarkTheme
+import kotlinx.coroutines.launch
 
 @Composable
 fun NoteDetailScreen(
     noteId: String,
     onBack: () -> Unit,
-    onOpenChat: () -> Unit
+    onOpenChat: (String?) -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val isDark = isCognoDarkTheme()
     val background = if (isDark) CognoDarkBackground else CognoBackground
+    val context = LocalContext.current
+    val repository = remember(context) { NativeNoteRepository(context) }
+    val scope = rememberCoroutineScope()
+    val note = remember(noteId) { repository.observeNote(noteId) }
+        .collectAsStateWithLifecycle(initialValue = null)
+        .value
+    var isEditing by remember { mutableStateOf(false) }
+    var editContent by remember { mutableStateOf("") }
+
+    LaunchedEffect(note?.id) {
+        editContent = note?.content.orEmpty()
+    }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(background)
     ) {
-        NoteDetailTopBar(isDark = isDark, onBack = onBack, onOpenChat = onOpenChat)
+        NoteDetailTopBar(
+            isDark = isDark,
+            isEditing = isEditing,
+            onBack = onBack,
+            onToggleEdit = {
+                if (isEditing) {
+                    scope.launch {
+                        repository.updateNoteContent(noteId, editContent)
+                        isEditing = false
+                    }
+                } else {
+                    editContent = note?.content.orEmpty()
+                    isEditing = true
+                }
+            },
+            onOpenChat = { onOpenChat(note?.sourceSessionId) }
+        )
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -60,7 +109,7 @@ fun NoteDetailScreen(
                 .padding(horizontal = 28.dp, vertical = 18.dp)
         ) {
             Text(
-                text = titleFor(noteId),
+                text = note?.title ?: "笔记不存在",
                 color = if (isDark) CognoDarkText else CognoText,
                 fontSize = 26.sp,
                 lineHeight = 32.sp,
@@ -68,13 +117,33 @@ fun NoteDetailScreen(
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = "2024年4月28日 14:22",
+                text = note?.let { formatNoteDetailTime(it.updatedAt) } ?: "",
                 color = CognoMuted,
                 fontSize = 11.sp,
                 letterSpacing = 1.sp
             )
+            if (note != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "来源会话 · ${note.sourceMessageCount} 条消息",
+                    color = if (isDark) CognoDarkPrimary else CognoPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium
+                )
+            }
             Spacer(modifier = Modifier.height(28.dp))
-            MarkdownLikeContent(isDark = isDark)
+            if (isEditing) {
+                NoteContentEditor(
+                    value = editContent,
+                    isDark = isDark,
+                    onValueChange = { editContent = it }
+                )
+            } else {
+                MarkdownLikeContent(
+                    content = note?.content ?: "这条笔记可能已被删除。",
+                    isDark = isDark
+                )
+            }
         }
     }
 }
@@ -82,7 +151,9 @@ fun NoteDetailScreen(
 @Composable
 private fun NoteDetailTopBar(
     isDark: Boolean,
+    isEditing: Boolean,
     onBack: () -> Unit,
+    onToggleEdit: () -> Unit,
     onOpenChat: () -> Unit
 ) {
     Row(
@@ -102,8 +173,12 @@ private fun NoteDetailTopBar(
             )
         }
         Row {
-            IconButton(onClick = { }) {
-                Icon(Icons.Default.Edit, contentDescription = "编辑", tint = if (isDark) CognoDarkPrimary else CognoPrimary)
+            IconButton(onClick = onToggleEdit) {
+                Icon(
+                    imageVector = if (isEditing) Icons.Default.Visibility else Icons.Default.Edit,
+                    contentDescription = if (isEditing) "查看" else "编辑",
+                    tint = if (isDark) CognoDarkPrimary else CognoPrimary
+                )
             }
             IconButton(onClick = onOpenChat) {
                 Icon(Icons.Default.Link, contentDescription = "跳转对话", tint = if (isDark) CognoDarkPrimary else CognoPrimary)
@@ -116,26 +191,64 @@ private fun NoteDetailTopBar(
 }
 
 @Composable
-private fun MarkdownLikeContent(isDark: Boolean) {
-    BodyText(
-        text = "在多线程环境中，确保线程安全是 Java 开发的核心。synchronized 关键字通过 JVM 内部的 Monitor 锁机制实现原子性。",
-        isDark = isDark
+private fun NoteContentEditor(
+    value: String,
+    isDark: Boolean,
+    onValueChange: (String) -> Unit
+) {
+    BasicTextField(
+        value = value,
+        onValueChange = onValueChange,
+        textStyle = TextStyle(
+            color = if (isDark) CognoDarkText else CognoText,
+            fontSize = 15.sp,
+            lineHeight = 25.sp,
+            fontFamily = FontFamily.Monospace
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(if (isDark) CognoDarkSurface else Color.White)
+            .border(
+                width = 1.dp,
+                color = if (isDark) CognoDarkLine else CognoLine,
+                shape = RoundedCornerShape(14.dp)
+            )
+            .padding(14.dp)
     )
-    SectionTitle("1. Synchronized 的作用", isDark)
-    BodyText(
-        text = "它主要用于解决多个线程访问共享资源时产生的竞争问题，确保同一时刻只有一个线程执行特定代码块。",
-        isDark = isDark
-    )
-    CodeBlock("public synchronized void syncMethod() {\n    // 临界区代码\n}", isDark)
-    SectionTitle("2. 经典单例模式 (DCL)", isDark)
-    BodyText(
-        text = "双重检查锁定通过 volatile 关键字禁止指令重排，是并发场景中常见的延迟初始化写法。",
-        isDark = isDark
-    )
-    CodeBlock(
-        text = "class Singleton {\n    private static volatile Singleton instance;\n\n    static Singleton getInstance() {\n        if (instance == null) {\n            synchronized (Singleton.class) {\n                if (instance == null) instance = new Singleton();\n            }\n        }\n        return instance;\n    }\n}",
-        isDark = isDark
-    )
+}
+
+@Composable
+private fun MarkdownLikeContent(content: String, isDark: Boolean) {
+    var inCodeBlock = false
+    val codeBuffer = StringBuilder()
+
+    content.lines().forEach { rawLine ->
+        val line = rawLine.trimEnd()
+        if (line.trim().startsWith("```")) {
+            if (inCodeBlock) {
+                CodeBlock(codeBuffer.toString().trimEnd(), isDark)
+                codeBuffer.clear()
+            }
+            inCodeBlock = !inCodeBlock
+            return@forEach
+        }
+
+        if (inCodeBlock) {
+            codeBuffer.appendLine(rawLine)
+            return@forEach
+        }
+
+        when {
+            line.isBlank() -> Spacer(modifier = Modifier.height(10.dp))
+            line.startsWith("#") -> SectionTitle(line.trimStart('#').trim(), isDark)
+            else -> BodyText(line, isDark)
+        }
+    }
+
+    if (codeBuffer.isNotBlank()) {
+        CodeBlock(codeBuffer.toString().trimEnd(), isDark)
+    }
 }
 
 @Composable
@@ -175,10 +288,6 @@ private fun CodeBlock(text: String, isDark: Boolean) {
     )
 }
 
-private fun titleFor(noteId: String): String {
-    return when (noteId) {
-        "web-security" -> "Web 安全基础：从 SQL 注入到 XSS"
-        "prompt-guide" -> "DeepSeek-V3 提示词工程优化指南"
-        else -> "Java 并发编程与单例模式深度解析"
-    }
+private fun formatNoteDetailTime(timestamp: Long): String {
+    return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timestamp))
 }

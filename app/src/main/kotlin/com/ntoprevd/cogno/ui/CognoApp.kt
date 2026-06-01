@@ -6,11 +6,17 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.ntoprevd.cogno.data.settings.AppSettingsStore
 import com.ntoprevd.cogno.ui.chat.ChatScreen
 import com.ntoprevd.cogno.ui.notes.NoteDetailScreen
 import com.ntoprevd.cogno.ui.notes.NotesScreen
@@ -28,7 +34,15 @@ object CognoRoutes {
 
 @Composable
 fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
-    CognoTheme(onDarkModeChanged = onDarkModeChanged) {
+    val context = LocalContext.current
+    val appSettingsStore = remember(context) { AppSettingsStore(context) }
+    var darkModePreference by remember { mutableStateOf(appSettingsStore.loadDarkModePreference()) }
+    var pendingChatSessionId by remember { mutableStateOf<String?>(null) }
+
+    CognoTheme(
+        darkModePreference = darkModePreference,
+        onDarkModeChanged = onDarkModeChanged
+    ) {
         val navController = rememberNavController()
         val enter = fadeIn(animationSpec = tween(180))
         val exit = fadeOut(animationSpec = tween(140))
@@ -44,7 +58,9 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
             composable(route = CognoRoutes.CHAT) {
                 ChatScreen(
                     onOpenNotes = { navController.navigate(CognoRoutes.NOTES) },
-                    onOpenSettings = { navController.navigate(CognoRoutes.SETTINGS) }
+                    onOpenSettings = { navController.navigate(CognoRoutes.SETTINGS) },
+                    initialSessionId = pendingChatSessionId,
+                    onInitialSessionConsumed = { pendingChatSessionId = null }
                 )
             }
             composable(route = CognoRoutes.NOTES) {
@@ -60,7 +76,8 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
                 NoteDetailScreen(
                     noteId = entry.arguments?.getString("noteId").orEmpty(),
                     onBack = { navController.popBackStack() },
-                    onOpenChat = {
+                    onOpenChat = { sessionId ->
+                        pendingChatSessionId = sessionId
                         navController.navigate(CognoRoutes.CHAT) {
                             popUpTo(CognoRoutes.CHAT) { inclusive = false }
                             launchSingleTop = true
@@ -69,7 +86,14 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
                 )
             }
             composable(route = CognoRoutes.SETTINGS) {
-                SettingsScreen(onBack = { navController.popBackStack() })
+                SettingsScreen(
+                    darkModePreference = darkModePreference,
+                    onDarkModePreferenceChange = { value ->
+                        appSettingsStore.saveDarkModePreference(value)
+                        darkModePreference = value
+                    },
+                    onBack = { navController.popBackStack() }
+                )
             }
         }
     }

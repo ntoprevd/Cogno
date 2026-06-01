@@ -5,8 +5,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import com.ntoprevd.cogno.data.settings.DarkModePreference
 
 val CognoPrimary = Color(0xFFE66A3C)
 val CognoDarkPrimary = Color(0xFFF28B62)
@@ -42,18 +45,31 @@ private val DarkColors = darkColorScheme(
     outline = CognoDarkLine
 )
 
+private val LocalCognoDarkTheme = staticCompositionLocalOf { false }
+
+@Composable
+fun isCognoDarkTheme(): Boolean = LocalCognoDarkTheme.current
+
 @Composable
 fun CognoTheme(
+    darkModePreference: String = DarkModePreference.SYSTEM,
     onDarkModeChanged: (Boolean) -> Unit,
     content: @Composable () -> Unit
 ) {
-    val isDark = isSystemInDarkTheme()
+    val followsSystemDark = isSystemInDarkTheme()
+    val isDark = when (darkModePreference) {
+        DarkModePreference.LIGHT -> false
+        DarkModePreference.DARK -> true
+        else -> followsSystemDark
+    }
     LaunchedEffect(isDark) {
         onDarkModeChanged(isDark)
     }
 
-    MaterialTheme(
-        colorScheme = if (isDark) DarkColors else LightColors,
-        content = content
-    )
+    CompositionLocalProvider(LocalCognoDarkTheme provides isDark) {
+        MaterialTheme(
+            colorScheme = if (isDark) DarkColors else LightColors,
+            content = content
+        )
+    }
 }

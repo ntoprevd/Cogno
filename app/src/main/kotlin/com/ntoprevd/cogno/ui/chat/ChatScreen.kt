@@ -1,6 +1,12 @@
 package com.ntoprevd.cogno.ui.chat
 
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -12,7 +18,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -43,13 +48,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Bookmark
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.outlined.AddComment
-import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -72,7 +74,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -84,8 +89,10 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ntoprevd.cogno.R
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
 import com.ntoprevd.cogno.data.db.entity.SessionEntity
+import com.ntoprevd.cogno.ui.chat.NoteToast
 import com.ntoprevd.cogno.ui.theme.CognoBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkLine
@@ -99,17 +106,23 @@ import com.ntoprevd.cogno.ui.theme.CognoPrimary
 import com.ntoprevd.cogno.ui.theme.CognoSurface
 import com.ntoprevd.cogno.ui.theme.CognoText
 import com.ntoprevd.cogno.ui.theme.CognoUserBubble
+import com.ntoprevd.cogno.ui.theme.isCognoDarkTheme
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
+
+private const val FEEDBACK_LIKE = "like"
+private const val FEEDBACK_DISLIKE = "dislike"
 
 @Composable
 fun ChatScreen(
     onOpenNotes: () -> Unit,
     onOpenSettings: () -> Unit,
+    initialSessionId: String? = null,
+    onInitialSessionConsumed: () -> Unit = {},
     viewModel: ChatViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    val isDark = isSystemInDarkTheme()
+    val isDark = isCognoDarkTheme()
     val listState = rememberLazyListState()
     val background = if (isDark) CognoDarkBackground else CognoBackground
 
@@ -118,6 +131,15 @@ fun ChatScreen(
             listState.animateScrollToItem(uiState.messages.lastIndex)
         }
     }
+
+    LaunchedEffect(initialSessionId) {
+        if (!initialSessionId.isNullOrBlank()) {
+            viewModel.selectSession(initialSessionId)
+            onInitialSessionConsumed()
+        }
+    }
+
+    var noteStyleDialogVisible by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -128,6 +150,10 @@ fun ChatScreen(
             ChatTopBar(
                 isDark = isDark,
                 onOpenDrawer = viewModel::openDrawer,
+                noteGenerationEnabled = uiState.currentSessionId != null &&
+                    uiState.messages.any { it.status == "completed" } &&
+                    !uiState.isGeneratingNote,
+                onGenerateNote = { noteStyleDialogVisible = true },
                 onNewSession = viewModel::startNewSession
             )
 
@@ -149,10 +175,18 @@ fun ChatScreen(
                             messages = uiState.messages,
                             isDark = isDark,
                             listState = listState,
+                            onUpdateUserMessage = viewModel::updateUserMessage,
+                            onSetAssistantFeedback = viewModel::setAssistantFeedback,
+                            onRegenerateAssistant = viewModel::regenerateAssistantMessage,
                             modifier = Modifier.fillMaxSize()
                         )
                     }
                 }
+                NoteGenerationToast(
+                    toast = uiState.noteToast,
+                    isDark = isDark,
+                    modifier = Modifier.align(Alignment.TopEnd)
+                )
             }
 
             uiState.errorMessage?.let { message ->
@@ -193,6 +227,17 @@ fun ChatScreen(
                 onOpenSettings()
             }
         )
+
+        if (noteStyleDialogVisible) {
+            NoteStyleDialog(
+                isDark = isDark,
+                onDismiss = { noteStyleDialogVisible = false },
+                onSelect = { style ->
+                    noteStyleDialogVisible = false
+                    viewModel.generateNote(style)
+                }
+            )
+        }
     }
 }
 
@@ -200,6 +245,8 @@ fun ChatScreen(
 private fun ChatTopBar(
     isDark: Boolean,
     onOpenDrawer: () -> Unit,
+    noteGenerationEnabled: Boolean,
+    onGenerateNote: () -> Unit,
     onNewSession: () -> Unit
 ) {
     Row(
@@ -217,7 +264,7 @@ private fun ChatTopBar(
                 modifier = Modifier.size(44.dp)
             ) {
                 Icon(
-                    imageVector = Icons.Default.Menu,
+                    painter = painterResource(R.drawable.dehaze_24px),
                     contentDescription = "打开侧边栏",
                     tint = if (isDark) CognoDarkPrimary else CognoPrimary,
                     modifier = Modifier.size(22.dp)
@@ -250,23 +297,140 @@ private fun ChatTopBar(
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { }, modifier = Modifier.size(42.dp)) {
+            IconButton(
+                onClick = onGenerateNote,
+                enabled = noteGenerationEnabled,
+                modifier = Modifier.size(42.dp)
+            ) {
                 Icon(
-                    imageVector = Icons.Outlined.AutoAwesome,
+                    painter = painterResource(R.drawable.wand_shine_24px),
                     contentDescription = "生成笔记",
-                    tint = if (isDark) CognoDarkPrimary else CognoPrimary,
+                    tint = if (noteGenerationEnabled) {
+                        if (isDark) CognoDarkPrimary else CognoPrimary
+                    } else {
+                        CognoMuted.copy(alpha = 0.55f)
+                    },
                     modifier = Modifier.size(21.dp)
                 )
             }
             IconButton(onClick = onNewSession, modifier = Modifier.size(42.dp)) {
                 Icon(
-                    imageVector = Icons.Outlined.AddComment,
+                    painter = painterResource(R.drawable.maps_ugc_24px),
                     contentDescription = "新建会话",
                     tint = if (isDark) CognoDarkPrimary else CognoPrimary,
                     modifier = Modifier.size(21.dp)
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun NoteGenerationToast(
+    toast: NoteToast?,
+    isDark: Boolean,
+    modifier: Modifier = Modifier
+) {
+    AnimatedVisibility(
+        visible = toast != null,
+        enter = fadeIn(animationSpec = tween(140)),
+        exit = fadeOut(animationSpec = tween(180)),
+        modifier = modifier
+            .padding(top = 8.dp)
+    ) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(14.dp),
+            shadowElevation = 14.dp,
+            modifier = Modifier
+                .widthIn(min = 150.dp, max = 260.dp)
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) CognoDarkLine else CognoLine,
+                    shape = RoundedCornerShape(14.dp)
+                )
+        ) {
+            Text(
+                text = toast?.message.orEmpty(),
+                color = if (toast?.isError == true) Color(0xFFE05650) else if (isDark) CognoDarkText else CognoText,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NoteStyleDialog(
+    isDark: Boolean,
+    onDismiss: () -> Unit,
+    onSelect: (String) -> Unit
+) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(20.dp),
+            shadowElevation = 18.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 28.dp)
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) CognoDarkLine else CognoLine,
+                    shape = RoundedCornerShape(20.dp)
+                )
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Text(
+                    text = "选择总结风格",
+                    color = if (isDark) CognoDarkText else CognoText,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                NoteStyleAction("简洁摘要", "只保留核心结论，适合快速回顾。", isDark) {
+                    onSelect("简洁：只保留核心结论和必要背景，不展开过多细节。")
+                }
+                NoteStyleAction("标准笔记", "保留结构、重点和解释，适合复习。", isDark) {
+                    onSelect("标准：结构清晰，保留关键解释、步骤和注意事项。")
+                }
+                NoteStyleAction("详细复习", "尽量展开上下文、例子和推导。", isDark) {
+                    onSelect("详细：充分展开概念、步骤、例子、注意事项和可复习的细节。")
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoteStyleAction(
+    title: String,
+    description: String,
+    isDark: Boolean,
+    onClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 11.dp)
+    ) {
+        Text(
+            text = title,
+            color = if (isDark) CognoDarkText else CognoText,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Spacer(modifier = Modifier.height(3.dp))
+        Text(
+            text = description,
+            color = CognoMuted,
+            fontSize = 12.sp,
+            lineHeight = 17.sp
+        )
     }
 }
 
@@ -298,8 +462,14 @@ private fun MessageList(
     messages: List<MessageEntity>,
     isDark: Boolean,
     listState: LazyListState,
+    onUpdateUserMessage: (String, String) -> Unit,
+    onSetAssistantFeedback: (String, String?) -> Unit,
+    onRegenerateAssistant: (MessageEntity) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var editTarget by remember { mutableStateOf<MessageEntity?>(null) }
+    var editText by remember { mutableStateOf("") }
+
     LazyColumn(
         state = listState,
         modifier = modifier,
@@ -307,14 +477,55 @@ private fun MessageList(
         verticalArrangement = Arrangement.spacedBy(18.dp)
     ) {
         items(messages, key = { it.id }) { message ->
-            MessageBubble(message = message, isDark = isDark)
+            MessageBubble(
+                message = message,
+                isDark = isDark,
+                onEdit = {
+                    editTarget = message
+                    editText = message.content
+                },
+                onSetFeedback = { feedback -> onSetAssistantFeedback(message.id, feedback) },
+                onRegenerate = { onRegenerateAssistant(message) }
+            )
         }
+    }
+
+    editTarget?.let { message ->
+        MessageEditDialog(
+            value = editText,
+            isDark = isDark,
+            onValueChange = { editText = it },
+            onDismiss = { editTarget = null },
+            onConfirm = {
+                onUpdateUserMessage(message.id, editText)
+                editTarget = null
+            }
+        )
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: MessageEntity, isDark: Boolean) {
+private fun MessageBubble(
+    message: MessageEntity,
+    isDark: Boolean,
+    onEdit: () -> Unit,
+    onSetFeedback: (String?) -> Unit,
+    onRegenerate: () -> Unit
+) {
     val isUser = message.role == "user"
+    val clipboardManager = LocalClipboardManager.current
+    var menuExpanded by remember { mutableStateOf(false) }
+    val displayText = when {
+        message.status == "pending" || (message.status == "streaming" && message.content.isBlank()) -> "正在思考..."
+        message.content.isBlank() -> "暂无内容"
+        else -> message.content
+    }
+    val textColor = when {
+        message.status == "failed" -> Color(0xFFD94841)
+        isDark -> CognoDarkText
+        else -> CognoText
+    }
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
@@ -328,6 +539,10 @@ private fun MessageBubble(message: MessageEntity, isDark: Boolean) {
             shape = RoundedCornerShape(20.dp),
             modifier = Modifier
                 .widthIn(max = 310.dp)
+                .combinedClickable(
+                    onClick = { },
+                    onLongClick = { menuExpanded = true }
+                )
                 .then(
                     if (!isDark) {
                         Modifier.border(
@@ -341,12 +556,218 @@ private fun MessageBubble(message: MessageEntity, isDark: Boolean) {
                 )
         ) {
             Text(
-                text = message.content,
-                color = if (isDark) CognoDarkText else CognoText,
+                text = displayText,
+                color = textColor,
                 fontSize = 16.sp,
                 lineHeight = 24.sp,
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
             )
+        }
+
+        if (menuExpanded) {
+            if (isUser) {
+                UserMessageMenu(
+                    isDark = isDark,
+                    onCopy = {
+                        clipboardManager.setText(AnnotatedString(message.content))
+                        menuExpanded = false
+                    },
+                    onEdit = {
+                        menuExpanded = false
+                        onEdit()
+                    },
+                    onDismiss = { menuExpanded = false }
+                )
+            } else {
+                AssistantMessageMenu(
+                    message = message,
+                    isDark = isDark,
+                    onCopy = {
+                        clipboardManager.setText(AnnotatedString(message.content))
+                        menuExpanded = false
+                    },
+                    onLike = {
+                        menuExpanded = false
+                        onSetFeedback(if (message.feedback == FEEDBACK_LIKE) null else FEEDBACK_LIKE)
+                    },
+                    onDislike = {
+                        menuExpanded = false
+                        onSetFeedback(if (message.feedback == FEEDBACK_DISLIKE) null else FEEDBACK_DISLIKE)
+                    },
+                    onRegenerate = {
+                        menuExpanded = false
+                        onRegenerate()
+                    },
+                    onDismiss = { menuExpanded = false }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UserMessageMenu(
+    isDark: Boolean,
+    onCopy: () -> Unit,
+    onEdit: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Popup(
+        alignment = Alignment.Center,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true)
+    ) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(16.dp),
+            shadowElevation = 16.dp,
+            modifier = Modifier
+                .width(196.dp)
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) CognoDarkLine else CognoLine,
+                    shape = RoundedCornerShape(16.dp)
+                )
+        ) {
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                ContextMenuAction("复制", isDark, onCopy)
+                ContextMenuAction("修改", isDark, onEdit)
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistantMessageMenu(
+    message: MessageEntity,
+    isDark: Boolean,
+    onCopy: () -> Unit,
+    onLike: () -> Unit,
+    onDislike: () -> Unit,
+    onRegenerate: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    Popup(
+        alignment = Alignment.Center,
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true)
+    ) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(16.dp),
+            shadowElevation = 16.dp,
+            modifier = Modifier
+                .width(232.dp)
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) CognoDarkLine else CognoLine,
+                    shape = RoundedCornerShape(16.dp)
+                )
+        ) {
+            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+                Text(
+                    text = formatMessageTime(message.createdAt),
+                    color = CognoMuted,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)
+                )
+                ContextMenuAction("复制", isDark, onCopy)
+                ContextMenuAction(if (message.feedback == FEEDBACK_LIKE) "取消点赞" else "点赞", isDark, onLike)
+                ContextMenuAction(if (message.feedback == FEEDBACK_DISLIKE) "取消点踩" else "点踩", isDark, onDislike)
+                ContextMenuAction("重新生成", isDark, onRegenerate)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MessageEditDialog(
+    value: String,
+    isDark: Boolean,
+    onValueChange: (String) -> Unit,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(22.dp),
+            shadowElevation = 18.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) CognoDarkLine else CognoLine,
+                    shape = RoundedCornerShape(22.dp)
+                )
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    text = "修改消息",
+                    color = if (isDark) CognoDarkText else CognoText,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    minLines = 3,
+                    maxLines = 6,
+                    textStyle = TextStyle(
+                        color = if (isDark) CognoDarkText else CognoText,
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp
+                    ),
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(
+                        if (isDark) CognoDarkPrimary else CognoPrimary
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(if (isDark) CognoDarkBackground else CognoBackground)
+                        .border(
+                            width = 1.dp,
+                            color = if (isDark) CognoDarkLine else CognoLine,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 12.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "取消",
+                        color = if (isDark) CognoDarkText else CognoText,
+                        textAlign = TextAlign.Center,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(
+                                width = 1.dp,
+                                color = if (isDark) CognoDarkLine else CognoLine,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 12.dp)
+                    )
+                    Text(
+                        text = "确定",
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isDark) CognoDarkPrimary else CognoPrimary)
+                            .clickable(enabled = value.isNotBlank(), onClick = onConfirm)
+                            .padding(vertical = 12.dp)
+                    )
+                }
+            }
         }
     }
 }
@@ -860,6 +1281,10 @@ private fun ContextMenuAction(
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 14.dp)
     )
+}
+
+private fun formatMessageTime(timestamp: Long): String {
+    return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timestamp))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -117,6 +117,7 @@ class AppDatabaseInstrumentedTest {
             "completed",
             null,
             null,
+            null,
             createdAt,
             createdAt
         )

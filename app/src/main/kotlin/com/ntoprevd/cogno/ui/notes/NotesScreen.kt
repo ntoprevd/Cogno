@@ -1,10 +1,17 @@
 package com.ntoprevd.cogno.ui.notes
 
+import android.app.Application
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +48,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -52,6 +61,12 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.border
 import androidx.compose.foundation.text.BasicTextField
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ntoprevd.cogno.data.db.entity.NoteEntity
+import com.ntoprevd.cogno.data.repository.NativeNoteRepository
 import com.ntoprevd.cogno.ui.theme.CognoBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkLine
@@ -62,49 +77,76 @@ import com.ntoprevd.cogno.ui.theme.CognoLine
 import com.ntoprevd.cogno.ui.theme.CognoMuted
 import com.ntoprevd.cogno.ui.theme.CognoPrimary
 import com.ntoprevd.cogno.ui.theme.CognoText
+import com.ntoprevd.cogno.ui.theme.isCognoDarkTheme
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
 
-private data class NotePreview(
-    val id: String,
-    val title: String,
-    val preview: String,
-    val time: String,
-    val pinned: Boolean
+data class NotesUiState(
+    val notes: List<NoteEntity> = emptyList()
 )
 
-private val sampleNotes = listOf(
-    NotePreview(
-        id = "java-concurrency",
-        title = "Java 并发编程与单例模式深度解析",
-        preview = "Synchronized 关键字用于解决资源竞争，底层与 Monitor 机制相关...",
-        time = "4/28 14:22",
-        pinned = true
-    ),
-    NotePreview(
-        id = "web-security",
-        title = "Web 安全基础：从 SQL 注入到 XSS",
-        preview = "汇总安全审计与日常学习对话中的原子知识点...",
-        time = "昨天 18:30",
-        pinned = false
-    ),
-    NotePreview(
-        id = "prompt-guide",
-        title = "DeepSeek-V3 提示词工程优化指南",
-        preview = "通过系统提示词提升模型在复杂逻辑推理中的表现...",
-        time = "前天 09:15",
-        pinned = false
-    )
-)
+class NotesViewModel(application: Application) : AndroidViewModel(application) {
+    private val repository = NativeNoteRepository(application.applicationContext)
+
+    private val _uiState = MutableStateFlow(NotesUiState())
+    val uiState: StateFlow<NotesUiState> = _uiState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            repository.observeNotes().collect { notes ->
+                _uiState.update { it.copy(notes = notes) }
+            }
+        }
+    }
+
+    fun renameNote(noteId: String, title: String) {
+        viewModelScope.launch {
+            repository.renameNote(noteId, title)
+        }
+    }
+
+    fun togglePinned(note: NoteEntity) {
+        viewModelScope.launch {
+            repository.setNotePinned(note.id, !note.pinned)
+        }
+    }
+
+    fun deleteNote(noteId: String) {
+        viewModelScope.launch {
+            repository.deleteNote(noteId)
+        }
+    }
+}
 
 @Composable
 fun NotesScreen(
     onBack: () -> Unit,
-    onOpenNote: (String) -> Unit
+    onOpenNote: (String) -> Unit,
+    viewModel: NotesViewModel = viewModel()
 ) {
-    val isDark = isSystemInDarkTheme()
+    val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val isDark = isCognoDarkTheme()
     val background = if (isDark) CognoDarkBackground else CognoBackground
-    var notes by remember { mutableStateOf(sampleNotes) }
-    var renameTarget by remember { mutableStateOf<NotePreview?>(null) }
+    var renameTarget by remember { mutableStateOf<NoteEntity?>(null) }
     var renameText by remember { mutableStateOf("") }
+    var searchExpanded by remember { mutableStateOf(false) }
+    var searchKeyword by remember { mutableStateOf("") }
+    val visibleNotes = remember(uiState.notes, searchKeyword) {
+        val keyword = searchKeyword.trim()
+        if (keyword.isBlank()) {
+            uiState.notes
+        } else {
+            uiState.notes.filter { note ->
+                note.title.contains(keyword, ignoreCase = true) ||
+                    note.preview.contains(keyword, ignoreCase = true) ||
+                    note.content.contains(keyword, ignoreCase = true)
+            }
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -112,14 +154,43 @@ fun NotesScreen(
             .background(background)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            NotesTopBar(isDark = isDark, onBack = onBack)
+            NotesTopBar(
+                isDark = isDark,
+                onBack = onBack,
+                onToggleSearch = {
+                    searchExpanded = !searchExpanded
+                    if (!searchExpanded) searchKeyword = ""
+                }
+            )
+            NoteSearchBar(
+                expanded = searchExpanded,
+                value = searchKeyword,
+                isDark = isDark,
+                onValueChange = { searchKeyword = it }
+            )
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                items(notes, key = { it.id }) { note ->
+                if (visibleNotes.isEmpty()) {
+                    item {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 120.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                if (searchKeyword.isBlank()) "暂无笔记，先在会话中点击顶部羽毛生成。" else "没有找到相关笔记。",
+                                color = CognoMuted,
+                                fontSize = 14.sp
+                            )
+                        }
+                    }
+                }
+                items(visibleNotes, key = { it.id }) { note ->
                     NoteCard(
                         note = note,
                         isDark = isDark,
@@ -128,14 +199,8 @@ fun NotesScreen(
                             renameTarget = note
                             renameText = note.title
                         },
-                        onTogglePin = {
-                            notes = notes.map {
-                                if (it.id == note.id) it.copy(pinned = !it.pinned) else it
-                            }.sortedByDescending { it.pinned }
-                        },
-                        onDelete = {
-                            notes = notes.filterNot { it.id == note.id }
-                        }
+                        onTogglePin = { viewModel.togglePinned(note) },
+                        onDelete = { viewModel.deleteNote(note.id) }
                     )
                 }
             }
@@ -163,9 +228,7 @@ fun NotesScreen(
                 onConfirm = {
                     val nextTitle = renameText.trim()
                     if (nextTitle.isNotEmpty()) {
-                        notes = notes.map {
-                            if (it.id == note.id) it.copy(title = nextTitle) else it
-                        }
+                        viewModel.renameNote(note.id, nextTitle)
                     }
                     renameTarget = null
                 }
@@ -175,7 +238,11 @@ fun NotesScreen(
 }
 
 @Composable
-private fun NotesTopBar(isDark: Boolean, onBack: () -> Unit) {
+private fun NotesTopBar(
+    isDark: Boolean,
+    onBack: () -> Unit,
+    onToggleSearch: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -201,7 +268,7 @@ private fun NotesTopBar(isDark: Boolean, onBack: () -> Unit) {
             )
         }
         Row {
-            IconButton(onClick = { }) {
+            IconButton(onClick = onToggleSearch) {
                 Icon(
                     imageVector = Icons.Default.Search,
                     contentDescription = "搜索笔记",
@@ -219,10 +286,82 @@ private fun NotesTopBar(isDark: Boolean, onBack: () -> Unit) {
     }
 }
 
+@Composable
+private fun NoteSearchBar(
+    expanded: Boolean,
+    value: String,
+    isDark: Boolean,
+    onValueChange: (String) -> Unit
+) {
+    val focusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(expanded) {
+        if (expanded) focusRequester.requestFocus()
+    }
+
+    AnimatedVisibility(
+        visible = expanded,
+        enter = expandVertically(animationSpec = tween(300)),
+        exit = shrinkVertically(animationSpec = tween(300))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(if (isDark) CognoDarkSurface else Color.White)
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) CognoDarkLine else CognoLine
+                )
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 12.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(if (isDark) CognoDarkBackground else CognoBackground)
+                    .border(
+                        width = 1.dp,
+                        color = if (isDark) CognoDarkLine.copy(alpha = 0.8f) else Color.Transparent,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Search,
+                    contentDescription = null,
+                    tint = CognoMuted,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(modifier = Modifier.size(8.dp))
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        color = if (isDark) CognoDarkText else CognoText,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(focusRequester),
+                    decorationBox = { innerTextField ->
+                        if (value.isEmpty()) {
+                            Text("搜索笔记标题或内容...", color = CognoMuted, fontSize = 14.sp)
+                        }
+                        innerTextField()
+                    }
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun NoteCard(
-    note: NotePreview,
+    note: NoteEntity,
     isDark: Boolean,
     onClick: () -> Unit,
     onRename: () -> Unit,
@@ -272,7 +411,7 @@ private fun NoteCard(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = note.time,
+                text = formatNoteTime(note.updatedAt),
                 color = CognoMuted,
                 fontSize = 9.sp,
                 modifier = Modifier.align(Alignment.End)
@@ -300,6 +439,10 @@ private fun NoteCard(
             )
         }
     }
+}
+
+private fun formatNoteTime(timestamp: Long): String {
+    return SimpleDateFormat("M/d HH:mm", Locale.CHINA).format(Date(timestamp))
 }
 
 @Composable
