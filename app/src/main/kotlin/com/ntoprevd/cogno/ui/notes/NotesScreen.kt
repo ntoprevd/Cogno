@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -31,6 +32,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBackIosNew
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.PushPin
@@ -463,10 +466,10 @@ private fun WebStyleContextMenu(
         Surface(
             color = if (isDark) CognoDarkSurface else Color.White,
             shape = RoundedCornerShape(16.dp),
-            shadowElevation = 16.dp,
+            shadowElevation = 8.dp,
             modifier = modifier
                 .padding(top = 8.dp, end = 20.dp)
-                .fillMaxWidth(0.72f)
+                .fillMaxWidth(0.54f)
                 .border(
                     width = 1.dp,
                     color = if (isDark) CognoDarkLine else CognoLine,
@@ -474,9 +477,9 @@ private fun WebStyleContextMenu(
                 )
         ) {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                ContextMenuAction("重命名", isDark, onRename)
-                ContextMenuAction(pinText, isDark, onTogglePin)
-                ContextMenuAction("删除", isDark, onDelete, destructive = true)
+                ContextMenuAction("重命名", Icons.Default.Edit, isDark, onRename)
+                ContextMenuAction(pinText, Icons.Default.PushPin, isDark, onTogglePin)
+                ContextMenuAction("删除", Icons.Default.Delete, isDark, onDelete, destructive = true)
             }
         }
     }
@@ -485,19 +488,32 @@ private fun WebStyleContextMenu(
 @Composable
 private fun ContextMenuAction(
     text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     isDark: Boolean,
     onClick: () -> Unit,
     destructive: Boolean = false
 ) {
-    Text(
-        text = text,
-        color = if (destructive) Color(0xFFE24A4A) else if (isDark) CognoDarkText else CognoText,
-        fontSize = 15.sp,
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 14.dp)
-    )
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (destructive) Color(0xFFE24A4A) else CognoMuted,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = text,
+            color = if (destructive) Color(0xFFE24A4A) else if (isDark) CognoDarkText else CognoText,
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1f)
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

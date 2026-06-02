@@ -12,6 +12,7 @@ import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -48,10 +49,16 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.ThumbDown
+import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.BasicAlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -73,6 +80,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalDensity
@@ -93,6 +102,7 @@ import com.ntoprevd.cogno.R
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
 import com.ntoprevd.cogno.data.db.entity.SessionEntity
 import com.ntoprevd.cogno.ui.chat.NoteToast
+import com.ntoprevd.cogno.ui.common.BasicMarkdown
 import com.ntoprevd.cogno.ui.theme.CognoBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkLine
@@ -108,6 +118,7 @@ import com.ntoprevd.cogno.ui.theme.CognoText
 import com.ntoprevd.cogno.ui.theme.CognoUserBubble
 import com.ntoprevd.cogno.ui.theme.isCognoDarkTheme
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 private const val FEEDBACK_LIKE = "like"
@@ -115,6 +126,7 @@ private const val FEEDBACK_DISLIKE = "dislike"
 
 @Composable
 fun ChatScreen(
+    currentModelId: String,
     onOpenNotes: () -> Unit,
     onOpenSettings: () -> Unit,
     initialSessionId: String? = null,
@@ -149,6 +161,7 @@ fun ChatScreen(
         Column(modifier = Modifier.fillMaxSize()) {
             ChatTopBar(
                 isDark = isDark,
+                modelId = currentModelId,
                 onOpenDrawer = viewModel::openDrawer,
                 noteGenerationEnabled = uiState.currentSessionId != null &&
                     uiState.messages.any { it.status == "completed" } &&
@@ -169,7 +182,7 @@ fun ChatScreen(
                     label = "chat-content"
                 ) { showWelcome ->
                     if (showWelcome) {
-                        WelcomeView(isDark = isDark)
+                        BrandWelcomeView(isDark = isDark)
                     } else {
                         MessageList(
                             messages = uiState.messages,
@@ -244,6 +257,7 @@ fun ChatScreen(
 @Composable
 private fun ChatTopBar(
     isDark: Boolean,
+    modelId: String,
     onOpenDrawer: () -> Unit,
     noteGenerationEnabled: Boolean,
     onGenerateNote: () -> Unit,
@@ -278,13 +292,16 @@ private fun ChatTopBar(
                 letterSpacing = 0.sp
             )
             Text(
-                text = "DeepSeek-V3",
+                text = modelId.ifBlank { "Model" },
                 color = if (isDark) CognoDarkPrimary else CognoPrimary,
                 fontWeight = FontWeight.Bold,
                 fontSize = 9.sp,
                 lineHeight = 9.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .padding(start = 7.dp)
+                    .widthIn(max = 130.dp)
                     .clip(RoundedCornerShape(4.dp))
                     .background((if (isDark) CognoDarkPrimary else CognoPrimary).copy(alpha = 0.11f))
                     .border(
@@ -435,6 +452,99 @@ private fun NoteStyleAction(
 }
 
 @Composable
+private fun BrandWelcomeView(isDark: Boolean) {
+    val phrases = remember {
+        listOf(
+            "Think it through. Keep what matters.",
+            "把零散想法，沉淀成清晰笔记。",
+            "Questions become conversations. Conversations become memory.",
+            "慢慢说，Cogno 会帮你整理脉络。",
+            "Catch the spark before it disappears."
+        )
+    }
+    val phrase = remember { phrases.random() }
+    var typedText by remember { mutableStateOf("") }
+
+    LaunchedEffect(phrase) {
+        typedText = ""
+        phrase.forEachIndexed { index, _ ->
+            delay(42)
+            typedText = phrase.take(index + 1)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 28.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        CognoMark(isDark = isDark, modifier = Modifier.size(112.dp))
+        Spacer(modifier = Modifier.height(30.dp))
+        Text(
+            text = typedText,
+            color = if (isDark) CognoDarkText.copy(alpha = 0.88f) else CognoText.copy(alpha = 0.86f),
+            fontSize = 25.sp,
+            lineHeight = 34.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            letterSpacing = 0.sp,
+            minLines = 2,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun CognoMark(
+    isDark: Boolean,
+    modifier: Modifier = Modifier
+) {
+    val primary = if (isDark) CognoDarkPrimary else CognoPrimary
+    val ink = if (isDark) CognoDarkText else CognoText
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val center = androidx.compose.ui.geometry.Offset(w / 2f, h / 2f)
+        drawCircle(
+            color = primary.copy(alpha = if (isDark) 0.16f else 0.12f),
+            radius = w * 0.46f,
+            center = center
+        )
+        drawCircle(
+            color = primary.copy(alpha = 0.30f),
+            radius = w * 0.34f,
+            center = center,
+            style = Stroke(width = w * 0.035f)
+        )
+        drawCircle(
+            color = ink.copy(alpha = if (isDark) 0.28f else 0.18f),
+            radius = w * 0.22f,
+            center = center,
+            style = Stroke(width = w * 0.018f)
+        )
+        val gem = Path().apply {
+            moveTo(w * 0.50f, h * 0.23f)
+            cubicTo(w * 0.70f, h * 0.34f, w * 0.78f, h * 0.50f, w * 0.50f, h * 0.77f)
+            cubicTo(w * 0.22f, h * 0.50f, w * 0.30f, h * 0.34f, w * 0.50f, h * 0.23f)
+            close()
+        }
+        drawPath(gem, color = primary)
+        drawCircle(
+            color = Color.White.copy(alpha = if (isDark) 0.86f else 0.96f),
+            radius = w * 0.055f,
+            center = androidx.compose.ui.geometry.Offset(w * 0.44f, h * 0.47f)
+        )
+        drawCircle(
+            color = Color.White.copy(alpha = if (isDark) 0.72f else 0.86f),
+            radius = w * 0.04f,
+            center = androidx.compose.ui.geometry.Offset(w * 0.60f, h * 0.54f)
+        )
+    }
+}
+
+@Composable
 private fun WelcomeView(isDark: Boolean) {
     Column(
         modifier = Modifier
@@ -526,47 +636,72 @@ private fun MessageBubble(
         isDark -> CognoDarkText
         else -> CognoText
     }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start
-    ) {
-        Surface(
-            color = if (isUser) {
-                if (isDark) CognoDarkUserBubble else CognoUserBubble
-            } else {
-                if (isDark) CognoDarkSurface else CognoSurface
-            },
-            shape = RoundedCornerShape(20.dp),
-            modifier = Modifier
-                .widthIn(max = 310.dp)
-                .combinedClickable(
-                    onClick = { },
-                    onLongClick = { menuExpanded = true }
-                )
-                .then(
-                    if (!isDark) {
-                        Modifier.border(
-                            width = 1.dp,
-                            color = Color.Black.copy(alpha = 0.04f),
-                            shape = RoundedCornerShape(20.dp)
+    Box(modifier = Modifier.fillMaxWidth()) {
+        if (isUser) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End
+            ) {
+                Surface(
+                    color = if (isDark) CognoDarkUserBubble else CognoUserBubble,
+                    shape = RoundedCornerShape(20.dp),
+                    modifier = Modifier
+                        .widthIn(max = 310.dp)
+                        .combinedClickable(
+                            onClick = { },
+                            onLongClick = { menuExpanded = true }
                         )
-                    } else {
-                        Modifier
-                    }
+                        .then(
+                            if (!isDark) {
+                                Modifier.border(
+                                    width = 1.dp,
+                                    color = Color.Black.copy(alpha = 0.04f),
+                                    shape = RoundedCornerShape(20.dp)
+                                )
+                            } else {
+                                Modifier
+                            }
+                        )
+                ) {
+                    Text(
+                        text = displayText,
+                        color = textColor,
+                        fontSize = 16.sp,
+                        lineHeight = 24.sp,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+                    )
+                }
+            }
+        } else {
+            // AI replies use a full-width reading block so long text, lists and code stay comfortable.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 2.dp)
+            ) {
+                BasicMarkdown(
+                    content = displayText,
+                    isDark = isDark,
+                    textColor = textColor,
+                    modifier = Modifier.fillMaxWidth()
                 )
-        ) {
-            Text(
-                text = displayText,
-                color = textColor,
-                fontSize = 16.sp,
-                lineHeight = 24.sp,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-            )
+                if (message.status == "completed" || message.status == "failed") {
+                    AssistantInlineActions(
+                        feedback = message.feedback,
+                        isDark = isDark,
+                        onCopy = { clipboardManager.setText(AnnotatedString(message.content)) },
+                        onLike = { onSetFeedback(if (message.feedback == FEEDBACK_LIKE) null else FEEDBACK_LIKE) },
+                        onDislike = { onSetFeedback(if (message.feedback == FEEDBACK_DISLIKE) null else FEEDBACK_DISLIKE) },
+                        onRegenerate = onRegenerate
+                    )
+                }
+            }
         }
 
         if (menuExpanded) {
             if (isUser) {
                 UserMessageMenu(
+                    message = message,
                     isDark = isDark,
                     onCopy = {
                         clipboardManager.setText(AnnotatedString(message.content))
@@ -578,35 +713,62 @@ private fun MessageBubble(
                     },
                     onDismiss = { menuExpanded = false }
                 )
-            } else {
-                AssistantMessageMenu(
-                    message = message,
-                    isDark = isDark,
-                    onCopy = {
-                        clipboardManager.setText(AnnotatedString(message.content))
-                        menuExpanded = false
-                    },
-                    onLike = {
-                        menuExpanded = false
-                        onSetFeedback(if (message.feedback == FEEDBACK_LIKE) null else FEEDBACK_LIKE)
-                    },
-                    onDislike = {
-                        menuExpanded = false
-                        onSetFeedback(if (message.feedback == FEEDBACK_DISLIKE) null else FEEDBACK_DISLIKE)
-                    },
-                    onRegenerate = {
-                        menuExpanded = false
-                        onRegenerate()
-                    },
-                    onDismiss = { menuExpanded = false }
-                )
             }
         }
     }
 }
 
 @Composable
+private fun AssistantInlineActions(
+    feedback: String?,
+    isDark: Boolean,
+    onCopy: () -> Unit,
+    onLike: () -> Unit,
+    onDislike: () -> Unit,
+    onRegenerate: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        InlineActionIcon(Icons.Default.ContentCopy, "复制", isDark, selected = false, onClick = onCopy)
+        InlineActionIcon(Icons.Default.ThumbUp, "点赞", isDark, selected = feedback == FEEDBACK_LIKE, onClick = onLike)
+        InlineActionIcon(Icons.Default.ThumbDown, "点踩", isDark, selected = feedback == FEEDBACK_DISLIKE, onClick = onDislike)
+        InlineActionIcon(Icons.Default.Refresh, "重新生成", isDark, selected = false, onClick = onRegenerate)
+    }
+}
+
+@Composable
+private fun InlineActionIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    isDark: Boolean,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(34.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (selected) {
+                if (isDark) CognoDarkPrimary else CognoPrimary
+            } else {
+                CognoMuted
+            },
+            modifier = Modifier.size(17.dp)
+        )
+    }
+}
+
+@Composable
 private fun UserMessageMenu(
+    message: MessageEntity,
     isDark: Boolean,
     onCopy: () -> Unit,
     onEdit: () -> Unit,
@@ -620,44 +782,9 @@ private fun UserMessageMenu(
         Surface(
             color = if (isDark) CognoDarkSurface else Color.White,
             shape = RoundedCornerShape(16.dp),
-            shadowElevation = 16.dp,
+            shadowElevation = 8.dp,
             modifier = Modifier
-                .width(196.dp)
-                .border(
-                    width = 1.dp,
-                    color = if (isDark) CognoDarkLine else CognoLine,
-                    shape = RoundedCornerShape(16.dp)
-                )
-        ) {
-            Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                ContextMenuAction("复制", isDark, onCopy)
-                ContextMenuAction("修改", isDark, onEdit)
-            }
-        }
-    }
-}
-
-@Composable
-private fun AssistantMessageMenu(
-    message: MessageEntity,
-    isDark: Boolean,
-    onCopy: () -> Unit,
-    onLike: () -> Unit,
-    onDislike: () -> Unit,
-    onRegenerate: () -> Unit,
-    onDismiss: () -> Unit
-) {
-    Popup(
-        alignment = Alignment.Center,
-        onDismissRequest = onDismiss,
-        properties = PopupProperties(focusable = true)
-    ) {
-        Surface(
-            color = if (isDark) CognoDarkSurface else Color.White,
-            shape = RoundedCornerShape(16.dp),
-            shadowElevation = 16.dp,
-            modifier = Modifier
-                .width(232.dp)
+                .width(150.dp)
                 .border(
                     width = 1.dp,
                     color = if (isDark) CognoDarkLine else CognoLine,
@@ -668,13 +795,12 @@ private fun AssistantMessageMenu(
                 Text(
                     text = formatMessageTime(message.createdAt),
                     color = CognoMuted,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(horizontal = 18.dp, vertical = 12.dp)
+                    fontSize = 11.sp,
+                    lineHeight = 15.sp,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                 )
-                ContextMenuAction("复制", isDark, onCopy)
-                ContextMenuAction(if (message.feedback == FEEDBACK_LIKE) "取消点赞" else "点赞", isDark, onLike)
-                ContextMenuAction(if (message.feedback == FEEDBACK_DISLIKE) "取消点踩" else "点踩", isDark, onDislike)
-                ContextMenuAction("重新生成", isDark, onRegenerate)
+                ContextMenuAction("复制", Icons.Default.ContentCopy, isDark, onCopy)
+                ContextMenuAction("修改", Icons.Default.Edit, isDark, onEdit)
             }
         }
     }
@@ -896,6 +1022,18 @@ private fun SidebarDrawer(
     val drawerProgress = remember { Animatable(if (isOpen) 1f else 0f) }
     var renameTarget by remember { mutableStateOf<SessionEntity?>(null) }
     var renameText by remember { mutableStateOf("") }
+    var sessionKeyword by remember { mutableStateOf("") }
+    val visibleSessions = remember(sessions, sessionKeyword) {
+        val keyword = sessionKeyword.trim()
+        if (keyword.isBlank()) {
+            sessions
+        } else {
+            sessions.filter { session ->
+                session.title.contains(keyword, ignoreCase = true) ||
+                    session.lastMessagePreview.orEmpty().contains(keyword, ignoreCase = true)
+            }
+        }
+    }
 
     LaunchedEffect(isOpen) {
         drawerProgress.animateTo(
@@ -1013,7 +1151,11 @@ private fun SidebarDrawer(
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     NoteEntry(isDark = isDark, onClick = onOpenNotes)
-                    SidebarSearchField(isDark = isDark)
+                    SidebarSearchField(
+                        keyword = sessionKeyword,
+                        isDark = isDark,
+                        onKeywordChange = { sessionKeyword = it }
+                    )
                 }
                 Column(
                     modifier = Modifier
@@ -1028,21 +1170,25 @@ private fun SidebarDrawer(
                         fontSize = 12.sp,
                         modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
                     )
-                    if (sessions.isEmpty()) {
+                    if (visibleSessions.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text("暂无历史会话", color = CognoMuted, fontSize = 13.sp)
+                            Text(
+                                if (sessionKeyword.isBlank()) "暂无历史会话" else "没有找到相关会话",
+                                color = CognoMuted,
+                                fontSize = 13.sp
+                            )
                         }
                     } else {
                         LazyColumn(
                             modifier = Modifier.weight(1f),
                             verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            items(sessions, key = { it.id }) { session ->
+                            items(visibleSessions, key = { it.id }) { session ->
                                 SessionRow(
                                     session = session,
                                     selected = session.id == currentSessionId,
@@ -1080,9 +1226,11 @@ private fun SidebarDrawer(
 }
 
 @Composable
-private fun SidebarSearchField(isDark: Boolean) {
-    var keyword by remember { mutableStateOf("") }
-
+private fun SidebarSearchField(
+    keyword: String,
+    isDark: Boolean,
+    onKeywordChange: (String) -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1100,7 +1248,7 @@ private fun SidebarSearchField(isDark: Boolean) {
         Spacer(modifier = Modifier.width(10.dp))
         BasicTextField(
             value = keyword,
-            onValueChange = { keyword = it },
+            onValueChange = onKeywordChange,
             singleLine = true,
             textStyle = TextStyle(
                 color = if (isDark) CognoDarkText else CognoText,
@@ -1246,10 +1394,10 @@ private fun WebStyleContextMenu(
         Surface(
             color = if (isDark) CognoDarkSurface else Color.White,
             shape = RoundedCornerShape(16.dp),
-            shadowElevation = 16.dp,
+            shadowElevation = 8.dp,
             modifier = modifier
                 .padding(top = 8.dp, end = 14.dp)
-                .width(232.dp)
+                .width(174.dp)
                 .border(
                     width = 1.dp,
                     color = if (isDark) CognoDarkLine else CognoLine,
@@ -1257,9 +1405,9 @@ private fun WebStyleContextMenu(
                 )
         ) {
             Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                ContextMenuAction("重命名", isDark, onRename)
-                ContextMenuAction(pinText, isDark, onTogglePin)
-                ContextMenuAction("删除", isDark, onDelete, destructive = true)
+                ContextMenuAction("重命名", Icons.Default.Edit, isDark, onRename)
+                ContextMenuAction(pinText, Icons.Default.PushPin, isDark, onTogglePin)
+                ContextMenuAction("删除", Icons.Default.Delete, isDark, onDelete, destructive = true)
             }
         }
     }
@@ -1268,19 +1416,32 @@ private fun WebStyleContextMenu(
 @Composable
 private fun ContextMenuAction(
     text: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
     isDark: Boolean,
     onClick: () -> Unit,
     destructive: Boolean = false
 ) {
-    Text(
-        text = text,
-        color = if (destructive) Color(0xFFE24A4A) else if (isDark) CognoDarkText else CognoText,
-        fontSize = 15.sp,
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 14.dp)
-    )
+            .padding(horizontal = 14.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (destructive) Color(0xFFE24A4A) else CognoMuted,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        Text(
+            text = text,
+            color = if (destructive) Color(0xFFE24A4A) else if (isDark) CognoDarkText else CognoText,
+            fontSize = 14.sp,
+            modifier = Modifier.weight(1f)
+        )
+    }
 }
 
 private fun formatMessageTime(timestamp: Long): String {
@@ -1380,40 +1541,43 @@ private fun RenameDialog(
 
 @Composable
 private fun SidebarFooter(isDark: Boolean, onOpenSettings: () -> Unit) {
-    Row(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .border(
-                width = 1.dp,
-                color = if (isDark) CognoDarkLine else CognoLine
-            )
-            .clickable(onClick = onOpenSettings)
             .navigationBarsPadding()
-            .padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 10.dp)
     ) {
-        Box(
+        Row(
             modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(if (isDark) CognoDarkPrimary else CognoPrimary),
-            contentAlignment = Alignment.Center
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(18.dp))
+                .clickable(onClick = onOpenSettings)
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("JD", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(if (isDark) CognoDarkPrimary else CognoPrimary),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("JD", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                text = "Jane Doe",
+                color = if (isDark) CognoDarkText else CognoText,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f)
+            )
+            Icon(
+                imageVector = Icons.Default.MoreHoriz,
+                contentDescription = "设置",
+                tint = CognoMuted,
+                modifier = Modifier.size(22.dp)
+            )
         }
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(
-            text = "Jane Doe",
-            color = if (isDark) CognoDarkText else CognoText,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.weight(1f)
-        )
-        Icon(
-            imageVector = Icons.Default.MoreHoriz,
-            contentDescription = "设置",
-            tint = CognoMuted,
-            modifier = Modifier.size(28.dp)
-        )
     }
 }

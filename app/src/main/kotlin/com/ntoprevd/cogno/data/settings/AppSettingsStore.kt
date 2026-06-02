@@ -20,8 +20,21 @@ class AppSettingsStore(context: Context) {
             .apply()
     }
 
+    fun loadLanguagePreference(): String {
+        val saved = preferences.getString(KEY_LANGUAGE, null)
+        return if (saved in AppLanguagePreference.all) saved!! else AppLanguagePreference.ZH_CN
+    }
+
+    fun saveLanguagePreference(value: String) {
+        val normalized = if (value in AppLanguagePreference.all) value else AppLanguagePreference.ZH_CN
+        preferences.edit()
+            .putString(KEY_LANGUAGE, normalized)
+            .apply()
+    }
+
     companion object {
         private const val PREFERENCES_NAME = "cogno_app_settings"
         private const val KEY_DARK_MODE = "dark_mode"
+        private const val KEY_LANGUAGE = "language"
     }
 }

@@ -2,6 +2,7 @@ package com.ntoprevd.cogno.data.network
 
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
 import com.ntoprevd.cogno.data.settings.AiSettings
+import com.ntoprevd.cogno.data.settings.ResponseStylePreference
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
@@ -200,11 +201,12 @@ class AiChatClient {
         stream: Boolean = false
     ): JSONObject {
         val requestMessages = JSONArray()
-        if (settings.systemPrompt.isNotBlank()) {
+        val systemPrompt = buildSystemPrompt(settings)
+        if (systemPrompt.isNotBlank()) {
             requestMessages.put(
                 JSONObject()
                     .put("role", "system")
-                    .put("content", settings.systemPrompt)
+                    .put("content", systemPrompt)
             )
         }
 
@@ -222,6 +224,7 @@ class AiChatClient {
             .put("model", settings.modelId)
             .put("messages", requestMessages)
             .put("stream", stream)
+            .put("temperature", settings.temperature)
     }
 
     private fun parseErrorMessage(bodyText: String, code: Int): String {
@@ -247,6 +250,7 @@ class AiChatClient {
                     )
             )
             .put("stream", false)
+            .put("temperature", settings.temperature)
             .put("max_tokens", 8)
     }
 
@@ -293,6 +297,14 @@ class AiChatClient {
                     )
             )
             .put("stream", false)
+            .put("temperature", settings.temperature)
+    }
+
+    private fun buildSystemPrompt(settings: AiSettings): String {
+        val styleInstruction = ResponseStylePreference.instructionFor(settings.responseStyle)
+        return listOf(settings.systemPrompt, styleInstruction)
+            .filter { it.isNotBlank() }
+            .joinToString(separator = "\n\n")
     }
 
     private fun parseNoteDraft(rawContent: String, fallbackTitle: String): AiNoteDraft {
