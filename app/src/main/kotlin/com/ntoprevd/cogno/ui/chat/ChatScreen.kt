@@ -101,6 +101,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ntoprevd.cogno.R
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
 import com.ntoprevd.cogno.data.db.entity.SessionEntity
+import com.ntoprevd.cogno.data.settings.AppLanguagePreference
 import com.ntoprevd.cogno.ui.chat.NoteToast
 import com.ntoprevd.cogno.ui.common.BasicMarkdown
 import com.ntoprevd.cogno.ui.theme.CognoBackground
@@ -124,9 +125,163 @@ import kotlinx.coroutines.launch
 private const val FEEDBACK_LIKE = "like"
 private const val FEEDBACK_DISLIKE = "dislike"
 
+private data class ChatScreenCopy(
+    val openSidebar: String,
+    val generateNote: String,
+    val newSession: String,
+    val noteStyleTitle: String,
+    val conciseTitle: String,
+    val conciseDescription: String,
+    val concisePrompt: String,
+    val standardTitle: String,
+    val standardDescription: String,
+    val standardPrompt: String,
+    val detailedTitle: String,
+    val detailedDescription: String,
+    val detailedPrompt: String,
+    val thinking: String,
+    val emptyContent: String,
+    val copy: String,
+    val like: String,
+    val dislike: String,
+    val regenerate: String,
+    val edit: String,
+    val editMessage: String,
+    val cancel: String,
+    val confirm: String,
+    val more: String,
+    val inputPlaceholder: String,
+    val voiceInput: String,
+    val send: String,
+    val today: String,
+    val emptySessions: String,
+    val noSessionFound: String,
+    val renameSession: String,
+    val searchSessions: String,
+    val openNotes: String,
+    val pinned: String,
+    val pin: String,
+    val unpin: String,
+    val rename: String,
+    val delete: String,
+    val settings: String,
+    val messageTimePattern: String,
+    val messageTimeLocale: Locale,
+    val welcomePhrases: List<String>,
+    val legacyWelcome: String
+)
+
+private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
+    return if (languagePreference == AppLanguagePreference.EN) {
+        ChatScreenCopy(
+            openSidebar = "Open sidebar",
+            generateNote = "Generate note",
+            newSession = "New chat",
+            noteStyleTitle = "Choose note style",
+            conciseTitle = "Concise Summary",
+            conciseDescription = "Keep only the core conclusions for a quick review.",
+            concisePrompt = "Concise: keep only core conclusions and necessary context, without too much detail.",
+            standardTitle = "Standard Note",
+            standardDescription = "Keep structure, key points, and explanations for review.",
+            standardPrompt = "Standard: use a clear structure and keep key explanations, steps, and caveats.",
+            detailedTitle = "Detailed Review",
+            detailedDescription = "Expand context, examples, and reasoning as much as possible.",
+            detailedPrompt = "Detailed: fully expand concepts, steps, examples, caveats, and reviewable details.",
+            thinking = "Thinking...",
+            emptyContent = "No content",
+            copy = "Copy",
+            like = "Like",
+            dislike = "Dislike",
+            regenerate = "Regenerate",
+            edit = "Edit",
+            editMessage = "Edit Message",
+            cancel = "Cancel",
+            confirm = "OK",
+            more = "More",
+            inputPlaceholder = "Type a message...",
+            voiceInput = "Voice input",
+            send = "Send",
+            today = "Today",
+            emptySessions = "No chat history",
+            noSessionFound = "No matching chats",
+            renameSession = "Rename this chat",
+            searchSessions = "Search chat history...",
+            openNotes = "Open Note Library",
+            pinned = "Pinned",
+            pin = "Pin",
+            unpin = "Unpin",
+            rename = "Rename",
+            delete = "Delete",
+            settings = "Settings",
+            messageTimePattern = "MMM d, yyyy HH:mm",
+            messageTimeLocale = Locale.US,
+            welcomePhrases = listOf(
+                "Think it through. Keep what matters.",
+                "Questions become conversations. Conversations become memory.",
+                "Catch the spark before it disappears.",
+                "Bring the loose thoughts. Cogno will shape them."
+            ),
+            legacyWelcome = "Bring questions, ideas, and loose thoughts here.\nCogno will turn them into conversation first, then organize them into notes."
+        )
+    } else {
+        ChatScreenCopy(
+            openSidebar = "打开侧边栏",
+            generateNote = "生成笔记",
+            newSession = "新建会话",
+            noteStyleTitle = "选择总结风格",
+            conciseTitle = "简洁摘要",
+            conciseDescription = "只保留核心结论，适合快速回顾。",
+            concisePrompt = "简洁：只保留核心结论和必要背景，不展开过多细节。",
+            standardTitle = "标准笔记",
+            standardDescription = "保留结构、重点和解释，适合复习。",
+            standardPrompt = "标准：结构清晰，保留关键解释、步骤和注意事项。",
+            detailedTitle = "详细复习",
+            detailedDescription = "尽量展开上下文、例子和推导。",
+            detailedPrompt = "详细：充分展开概念、步骤、例子、注意事项和可复习的细节。",
+            thinking = "正在思考...",
+            emptyContent = "暂无内容",
+            copy = "复制",
+            like = "点赞",
+            dislike = "点踩",
+            regenerate = "重新生成",
+            edit = "修改",
+            editMessage = "修改消息",
+            cancel = "取消",
+            confirm = "确定",
+            more = "更多",
+            inputPlaceholder = "输入消息...",
+            voiceInput = "语音输入",
+            send = "发送",
+            today = "今天",
+            emptySessions = "暂无历史会话",
+            noSessionFound = "没有找到相关会话",
+            renameSession = "重命名此对话",
+            searchSessions = "搜索历史对话...",
+            openNotes = "进入笔记库",
+            pinned = "置顶",
+            pin = "置顶",
+            unpin = "取消置顶",
+            rename = "重命名",
+            delete = "删除",
+            settings = "设置",
+            messageTimePattern = "yyyy年M月d日 HH:mm",
+            messageTimeLocale = Locale.CHINA,
+            welcomePhrases = listOf(
+                "Think it through. Keep what matters.",
+                "把零散想法，沉淀成清晰笔记。",
+                "Questions become conversations. Conversations become memory.",
+                "慢慢说，Cogno 会帮你整理脉络。",
+                "Catch the spark before it disappears."
+            ),
+            legacyWelcome = "把问题、灵感和碎片想法都放进来。\nCogno 会先帮你沉淀成对话，之后再整理成笔记。"
+        )
+    }
+}
+
 @Composable
 fun ChatScreen(
     currentModelId: String,
+    languagePreference: String,
     onOpenNotes: () -> Unit,
     onOpenSettings: () -> Unit,
     initialSessionId: String? = null,
@@ -137,6 +292,7 @@ fun ChatScreen(
     val isDark = isCognoDarkTheme()
     val listState = rememberLazyListState()
     val background = if (isDark) CognoDarkBackground else CognoBackground
+    val copy = chatScreenCopy(languagePreference)
 
     LaunchedEffect(uiState.messages.size, uiState.currentSessionId) {
         if (uiState.messages.isNotEmpty()) {
@@ -162,6 +318,7 @@ fun ChatScreen(
             ChatTopBar(
                 isDark = isDark,
                 modelId = currentModelId,
+                copy = copy,
                 onOpenDrawer = viewModel::openDrawer,
                 noteGenerationEnabled = uiState.currentSessionId != null &&
                     uiState.messages.any { it.status == "completed" } &&
@@ -182,15 +339,20 @@ fun ChatScreen(
                     label = "chat-content"
                 ) { showWelcome ->
                     if (showWelcome) {
-                        BrandWelcomeView(isDark = isDark)
+                        BrandWelcomeView(isDark = isDark, copy = copy)
                     } else {
                         MessageList(
                             messages = uiState.messages,
                             isDark = isDark,
+                            copy = copy,
                             listState = listState,
-                            onUpdateUserMessage = viewModel::updateUserMessage,
+                            onUpdateUserMessage = { messageId, content ->
+                                viewModel.updateUserMessage(messageId, content, languagePreference)
+                            },
                             onSetAssistantFeedback = viewModel::setAssistantFeedback,
-                            onRegenerateAssistant = viewModel::regenerateAssistantMessage,
+                            onRegenerateAssistant = { message ->
+                                viewModel.regenerateAssistantMessage(message, languagePreference)
+                            },
                             modifier = Modifier.fillMaxSize()
                         )
                     }
@@ -216,7 +378,8 @@ fun ChatScreen(
                 isDark = isDark,
                 isSending = uiState.isSending,
                 onTextChange = viewModel::onInputChange,
-                onSend = viewModel::sendMessage
+                onSend = { viewModel.sendMessage(languagePreference) },
+                copy = copy
             )
         }
 
@@ -225,6 +388,7 @@ fun ChatScreen(
             sessions = uiState.sessions,
             currentSessionId = uiState.currentSessionId,
             isDark = isDark,
+            copy = copy,
             onOpen = viewModel::openDrawer,
             onClose = viewModel::closeDrawer,
             onSelectSession = viewModel::selectSession,
@@ -244,10 +408,11 @@ fun ChatScreen(
         if (noteStyleDialogVisible) {
             NoteStyleDialog(
                 isDark = isDark,
+                copy = copy,
                 onDismiss = { noteStyleDialogVisible = false },
                 onSelect = { style ->
                     noteStyleDialogVisible = false
-                    viewModel.generateNote(style)
+                    viewModel.generateNote(style, languagePreference)
                 }
             )
         }
@@ -258,6 +423,7 @@ fun ChatScreen(
 private fun ChatTopBar(
     isDark: Boolean,
     modelId: String,
+    copy: ChatScreenCopy,
     onOpenDrawer: () -> Unit,
     noteGenerationEnabled: Boolean,
     onGenerateNote: () -> Unit,
@@ -279,7 +445,7 @@ private fun ChatTopBar(
             ) {
                 Icon(
                     painter = painterResource(R.drawable.dehaze_24px),
-                    contentDescription = "打开侧边栏",
+                    contentDescription = copy.openSidebar,
                     tint = if (isDark) CognoDarkPrimary else CognoPrimary,
                     modifier = Modifier.size(22.dp)
                 )
@@ -321,7 +487,7 @@ private fun ChatTopBar(
             ) {
                 Icon(
                     painter = painterResource(R.drawable.wand_shine_24px),
-                    contentDescription = "生成笔记",
+                    contentDescription = copy.generateNote,
                     tint = if (noteGenerationEnabled) {
                         if (isDark) CognoDarkPrimary else CognoPrimary
                     } else {
@@ -333,7 +499,7 @@ private fun ChatTopBar(
             IconButton(onClick = onNewSession, modifier = Modifier.size(42.dp)) {
                 Icon(
                     painter = painterResource(R.drawable.maps_ugc_24px),
-                    contentDescription = "新建会话",
+                    contentDescription = copy.newSession,
                     tint = if (isDark) CognoDarkPrimary else CognoPrimary,
                     modifier = Modifier.size(21.dp)
                 )
@@ -382,6 +548,7 @@ private fun NoteGenerationToast(
 @Composable
 private fun NoteStyleDialog(
     isDark: Boolean,
+    copy: ChatScreenCopy,
     onDismiss: () -> Unit,
     onSelect: (String) -> Unit
 ) {
@@ -401,20 +568,20 @@ private fun NoteStyleDialog(
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(
-                    text = "选择总结风格",
+                    text = copy.noteStyleTitle,
                     color = if (isDark) CognoDarkText else CognoText,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                NoteStyleAction("简洁摘要", "只保留核心结论，适合快速回顾。", isDark) {
-                    onSelect("简洁：只保留核心结论和必要背景，不展开过多细节。")
+                NoteStyleAction(copy.conciseTitle, copy.conciseDescription, isDark) {
+                    onSelect(copy.concisePrompt)
                 }
-                NoteStyleAction("标准笔记", "保留结构、重点和解释，适合复习。", isDark) {
-                    onSelect("标准：结构清晰，保留关键解释、步骤和注意事项。")
+                NoteStyleAction(copy.standardTitle, copy.standardDescription, isDark) {
+                    onSelect(copy.standardPrompt)
                 }
-                NoteStyleAction("详细复习", "尽量展开上下文、例子和推导。", isDark) {
-                    onSelect("详细：充分展开概念、步骤、例子、注意事项和可复习的细节。")
+                NoteStyleAction(copy.detailedTitle, copy.detailedDescription, isDark) {
+                    onSelect(copy.detailedPrompt)
                 }
             }
         }
@@ -452,17 +619,9 @@ private fun NoteStyleAction(
 }
 
 @Composable
-private fun BrandWelcomeView(isDark: Boolean) {
-    val phrases = remember {
-        listOf(
-            "Think it through. Keep what matters.",
-            "把零散想法，沉淀成清晰笔记。",
-            "Questions become conversations. Conversations become memory.",
-            "慢慢说，Cogno 会帮你整理脉络。",
-            "Catch the spark before it disappears."
-        )
-    }
-    val phrase = remember { phrases.random() }
+private fun BrandWelcomeView(isDark: Boolean, copy: ChatScreenCopy) {
+    val phrases = copy.welcomePhrases
+    val phrase = remember(phrases) { phrases.random() }
     var typedText by remember { mutableStateOf("") }
 
     LaunchedEffect(phrase) {
@@ -545,7 +704,7 @@ private fun CognoMark(
 }
 
 @Composable
-private fun WelcomeView(isDark: Boolean) {
+private fun WelcomeView(isDark: Boolean, copy: ChatScreenCopy) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -556,7 +715,7 @@ private fun WelcomeView(isDark: Boolean) {
         Text(text = "✦", fontSize = 50.sp, lineHeight = 50.sp)
         Spacer(modifier = Modifier.height(38.dp))
         Text(
-            text = "把问题、灵感和碎片想法都放进来。\nCogno 会先帮你沉淀成对话，之后再整理成笔记。",
+            text = copy.legacyWelcome,
             color = if (isDark) CognoDarkText.copy(alpha = 0.70f) else CognoMuted.copy(alpha = 0.86f),
             fontSize = 15.sp,
             lineHeight = 27.sp,
@@ -571,6 +730,7 @@ private fun WelcomeView(isDark: Boolean) {
 private fun MessageList(
     messages: List<MessageEntity>,
     isDark: Boolean,
+    copy: ChatScreenCopy,
     listState: LazyListState,
     onUpdateUserMessage: (String, String) -> Unit,
     onSetAssistantFeedback: (String, String?) -> Unit,
@@ -590,6 +750,7 @@ private fun MessageList(
             MessageBubble(
                 message = message,
                 isDark = isDark,
+                copy = copy,
                 onEdit = {
                     editTarget = message
                     editText = message.content
@@ -604,6 +765,7 @@ private fun MessageList(
         MessageEditDialog(
             value = editText,
             isDark = isDark,
+            copy = copy,
             onValueChange = { editText = it },
             onDismiss = { editTarget = null },
             onConfirm = {
@@ -619,6 +781,7 @@ private fun MessageList(
 private fun MessageBubble(
     message: MessageEntity,
     isDark: Boolean,
+    copy: ChatScreenCopy,
     onEdit: () -> Unit,
     onSetFeedback: (String?) -> Unit,
     onRegenerate: () -> Unit
@@ -627,8 +790,8 @@ private fun MessageBubble(
     val clipboardManager = LocalClipboardManager.current
     var menuExpanded by remember { mutableStateOf(false) }
     val displayText = when {
-        message.status == "pending" || (message.status == "streaming" && message.content.isBlank()) -> "正在思考..."
-        message.content.isBlank() -> "暂无内容"
+        message.status == "pending" || (message.status == "streaming" && message.content.isBlank()) -> copy.thinking
+        message.content.isBlank() -> copy.emptyContent
         else -> message.content
     }
     val textColor = when {
@@ -689,6 +852,7 @@ private fun MessageBubble(
                     AssistantInlineActions(
                         feedback = message.feedback,
                         isDark = isDark,
+                        copy = copy,
                         onCopy = { clipboardManager.setText(AnnotatedString(message.content)) },
                         onLike = { onSetFeedback(if (message.feedback == FEEDBACK_LIKE) null else FEEDBACK_LIKE) },
                         onDislike = { onSetFeedback(if (message.feedback == FEEDBACK_DISLIKE) null else FEEDBACK_DISLIKE) },
@@ -703,6 +867,7 @@ private fun MessageBubble(
                 UserMessageMenu(
                     message = message,
                     isDark = isDark,
+                    copy = copy,
                     onCopy = {
                         clipboardManager.setText(AnnotatedString(message.content))
                         menuExpanded = false
@@ -722,6 +887,7 @@ private fun MessageBubble(
 private fun AssistantInlineActions(
     feedback: String?,
     isDark: Boolean,
+    copy: ChatScreenCopy,
     onCopy: () -> Unit,
     onLike: () -> Unit,
     onDislike: () -> Unit,
@@ -734,10 +900,10 @@ private fun AssistantInlineActions(
         horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        InlineActionIcon(Icons.Default.ContentCopy, "复制", isDark, selected = false, onClick = onCopy)
-        InlineActionIcon(Icons.Default.ThumbUp, "点赞", isDark, selected = feedback == FEEDBACK_LIKE, onClick = onLike)
-        InlineActionIcon(Icons.Default.ThumbDown, "点踩", isDark, selected = feedback == FEEDBACK_DISLIKE, onClick = onDislike)
-        InlineActionIcon(Icons.Default.Refresh, "重新生成", isDark, selected = false, onClick = onRegenerate)
+        InlineActionIcon(Icons.Default.ContentCopy, copy.copy, isDark, selected = false, onClick = onCopy)
+        InlineActionIcon(Icons.Default.ThumbUp, copy.like, isDark, selected = feedback == FEEDBACK_LIKE, onClick = onLike)
+        InlineActionIcon(Icons.Default.ThumbDown, copy.dislike, isDark, selected = feedback == FEEDBACK_DISLIKE, onClick = onDislike)
+        InlineActionIcon(Icons.Default.Refresh, copy.regenerate, isDark, selected = false, onClick = onRegenerate)
     }
 }
 
@@ -770,6 +936,7 @@ private fun InlineActionIcon(
 private fun UserMessageMenu(
     message: MessageEntity,
     isDark: Boolean,
+    copy: ChatScreenCopy,
     onCopy: () -> Unit,
     onEdit: () -> Unit,
     onDismiss: () -> Unit
@@ -791,16 +958,16 @@ private fun UserMessageMenu(
                     shape = RoundedCornerShape(16.dp)
                 )
         ) {
-            Column(modifier = Modifier.padding(vertical = 4.dp)) {
+            Column {
                 Text(
-                    text = formatMessageTime(message.createdAt),
+                    text = formatMessageTime(message.createdAt, copy),
                     color = CognoMuted,
                     fontSize = 11.sp,
                     lineHeight = 15.sp,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                 )
-                ContextMenuAction("复制", Icons.Default.ContentCopy, isDark, onCopy)
-                ContextMenuAction("修改", Icons.Default.Edit, isDark, onEdit)
+                ContextMenuAction(copy.copy, Icons.Default.ContentCopy, isDark, onCopy)
+                ContextMenuAction(copy.edit, Icons.Default.Edit, isDark, onEdit, isLast = true)
             }
         }
     }
@@ -811,6 +978,7 @@ private fun UserMessageMenu(
 private fun MessageEditDialog(
     value: String,
     isDark: Boolean,
+    copy: ChatScreenCopy,
     onValueChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
@@ -831,7 +999,7 @@ private fun MessageEditDialog(
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
                 Text(
-                    text = "修改消息",
+                    text = copy.editMessage,
                     color = if (isDark) CognoDarkText else CognoText,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
@@ -864,7 +1032,7 @@ private fun MessageEditDialog(
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "取消",
+                        text = copy.cancel,
                         color = if (isDark) CognoDarkText else CognoText,
                         textAlign = TextAlign.Center,
                         fontSize = 15.sp,
@@ -880,7 +1048,7 @@ private fun MessageEditDialog(
                             .padding(vertical = 12.dp)
                     )
                     Text(
-                        text = "确定",
+                        text = copy.confirm,
                         color = Color.White,
                         textAlign = TextAlign.Center,
                         fontWeight = FontWeight.SemiBold,
@@ -904,7 +1072,8 @@ private fun ChatInputBar(
     isDark: Boolean,
     isSending: Boolean,
     onTextChange: (String) -> Unit,
-    onSend: () -> Unit
+    onSend: () -> Unit,
+    copy: ChatScreenCopy
 ) {
     Box(
         modifier = Modifier
@@ -935,7 +1104,7 @@ private fun ChatInputBar(
             IconButton(onClick = { }, modifier = Modifier.size(40.dp)) {
                 Icon(
                     imageVector = Icons.Default.Add,
-                    contentDescription = "更多",
+                    contentDescription = copy.more,
                     tint = CognoMuted,
                     modifier = Modifier.size(21.dp)
                 )
@@ -959,7 +1128,7 @@ private fun ChatInputBar(
                 decorationBox = { innerTextField ->
                     if (text.isEmpty()) {
                         Text(
-                            text = "输入消息...",
+                            text = copy.inputPlaceholder,
                             color = CognoMuted,
                             fontSize = 16.sp,
                             lineHeight = 22.sp
@@ -975,7 +1144,7 @@ private fun ChatInputBar(
                 IconButton(onClick = { }, modifier = Modifier.size(40.dp)) {
                     Icon(
                         imageVector = Icons.Default.Mic,
-                        contentDescription = "语音输入",
+                        contentDescription = copy.voiceInput,
                         tint = if (isDark) CognoDarkText.copy(alpha = 0.8f) else CognoText.copy(alpha = 0.8f),
                         modifier = Modifier.size(21.dp)
                     )
@@ -993,7 +1162,7 @@ private fun ChatInputBar(
                 ) {
                     Icon(
                         imageVector = Icons.Default.ArrowUpward,
-                        contentDescription = "发送",
+                        contentDescription = copy.send,
                         tint = Color.White,
                         modifier = Modifier.size(20.dp)
                     )
@@ -1009,6 +1178,7 @@ private fun SidebarDrawer(
     sessions: List<SessionEntity>,
     currentSessionId: String?,
     isDark: Boolean,
+    copy: ChatScreenCopy,
     onOpen: () -> Unit,
     onClose: () -> Unit,
     onSelectSession: (String) -> Unit,
@@ -1150,10 +1320,11 @@ private fun SidebarDrawer(
                         .padding(start = 20.dp, end = 20.dp, top = 18.dp, bottom = 14.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    NoteEntry(isDark = isDark, onClick = onOpenNotes)
+                    NoteEntry(isDark = isDark, copy = copy, onClick = onOpenNotes)
                     SidebarSearchField(
                         keyword = sessionKeyword,
                         isDark = isDark,
+                        copy = copy,
                         onKeywordChange = { sessionKeyword = it }
                     )
                 }
@@ -1164,7 +1335,7 @@ private fun SidebarDrawer(
                         .padding(horizontal = 20.dp)
                 ) {
                     Text(
-                        text = "今天",
+                        text = copy.today,
                         color = CognoMuted,
                         fontWeight = FontWeight.Medium,
                         fontSize = 12.sp,
@@ -1178,7 +1349,7 @@ private fun SidebarDrawer(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                if (sessionKeyword.isBlank()) "暂无历史会话" else "没有找到相关会话",
+                                if (sessionKeyword.isBlank()) copy.emptySessions else copy.noSessionFound,
                                 color = CognoMuted,
                                 fontSize = 13.sp
                             )
@@ -1193,6 +1364,7 @@ private fun SidebarDrawer(
                                     session = session,
                                     selected = session.id == currentSessionId,
                                     isDark = isDark,
+                                    copy = copy,
                                     onClick = { onSelectSession(session.id) },
                                     onRename = {
                                         renameTarget = session
@@ -1205,15 +1377,16 @@ private fun SidebarDrawer(
                         }
                     }
                 }
-                SidebarFooter(isDark = isDark, onOpenSettings = onOpenSettings)
+                SidebarFooter(isDark = isDark, copy = copy, onOpenSettings = onOpenSettings)
             }
         }
 
         renameTarget?.let { session ->
             RenameDialog(
-                title = "重命名此对话",
+                title = copy.renameSession,
                 value = renameText,
                 isDark = isDark,
+                copy = copy,
                 onValueChange = { renameText = it },
                 onDismiss = { renameTarget = null },
                 onConfirm = {
@@ -1229,6 +1402,7 @@ private fun SidebarDrawer(
 private fun SidebarSearchField(
     keyword: String,
     isDark: Boolean,
+    copy: ChatScreenCopy,
     onKeywordChange: (String) -> Unit
 ) {
     Row(
@@ -1261,7 +1435,7 @@ private fun SidebarSearchField(
             modifier = Modifier.weight(1f),
             decorationBox = { innerTextField ->
                 if (keyword.isEmpty()) {
-                    Text("搜索历史对话...", color = CognoMuted, fontSize = 14.sp)
+                    Text(copy.searchSessions, color = CognoMuted, fontSize = 14.sp)
                 }
                 innerTextField()
             }
@@ -1270,7 +1444,7 @@ private fun SidebarSearchField(
 }
 
 @Composable
-private fun NoteEntry(isDark: Boolean, onClick: () -> Unit) {
+private fun NoteEntry(isDark: Boolean, copy: ChatScreenCopy, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1288,7 +1462,7 @@ private fun NoteEntry(isDark: Boolean, onClick: () -> Unit) {
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
-            text = "进入笔记库",
+            text = copy.openNotes,
             color = if (isDark) CognoDarkPrimary else CognoPrimary,
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium
@@ -1302,6 +1476,7 @@ private fun SessionRow(
     session: SessionEntity,
     selected: Boolean,
     isDark: Boolean,
+    copy: ChatScreenCopy,
     onClick: () -> Unit,
     onRename: () -> Unit,
     onTogglePin: () -> Unit,
@@ -1346,7 +1521,7 @@ private fun SessionRow(
             if (session.pinned) {
                 Icon(
                     imageVector = Icons.Default.PushPin,
-                    contentDescription = "置顶",
+                    contentDescription = copy.pinned,
                     tint = if (isDark) CognoDarkPrimary else CognoPrimary,
                     modifier = Modifier.size(12.dp)
                 )
@@ -1356,7 +1531,8 @@ private fun SessionRow(
         if (menuExpanded) {
             WebStyleContextMenu(
                 isDark = isDark,
-                pinText = if (session.pinned) "取消置顶" else "置顶",
+                pinText = if (session.pinned) copy.unpin else copy.pin,
+                copy = copy,
                 onRename = {
                     menuExpanded = false
                     onRename()
@@ -1380,6 +1556,7 @@ private fun SessionRow(
 private fun WebStyleContextMenu(
     isDark: Boolean,
     pinText: String,
+    copy: ChatScreenCopy,
     onRename: () -> Unit,
     onTogglePin: () -> Unit,
     onDelete: () -> Unit,
@@ -1404,10 +1581,10 @@ private fun WebStyleContextMenu(
                     shape = RoundedCornerShape(16.dp)
                 )
         ) {
-            Column(modifier = Modifier.padding(vertical = 4.dp)) {
-                ContextMenuAction("重命名", Icons.Default.Edit, isDark, onRename)
+            Column {
+                ContextMenuAction(copy.rename, Icons.Default.Edit, isDark, onRename, isFirst = true)
                 ContextMenuAction(pinText, Icons.Default.PushPin, isDark, onTogglePin)
-                ContextMenuAction("删除", Icons.Default.Delete, isDark, onDelete, destructive = true)
+                ContextMenuAction(copy.delete, Icons.Default.Delete, isDark, onDelete, destructive = true, isLast = true)
             }
         }
     }
@@ -1419,11 +1596,20 @@ private fun ContextMenuAction(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     isDark: Boolean,
     onClick: () -> Unit,
-    destructive: Boolean = false
+    destructive: Boolean = false,
+    isFirst: Boolean = false,
+    isLast: Boolean = false
 ) {
+    val rowShape = RoundedCornerShape(
+        topStart = if (isFirst) 16.dp else 0.dp,
+        topEnd = if (isFirst) 16.dp else 0.dp,
+        bottomStart = if (isLast) 16.dp else 0.dp,
+        bottomEnd = if (isLast) 16.dp else 0.dp
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            .clip(rowShape)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp, vertical = 11.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -1444,8 +1630,8 @@ private fun ContextMenuAction(
     }
 }
 
-private fun formatMessageTime(timestamp: Long): String {
-    return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timestamp))
+private fun formatMessageTime(timestamp: Long, copy: ChatScreenCopy): String {
+    return SimpleDateFormat(copy.messageTimePattern, copy.messageTimeLocale).format(Date(timestamp))
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -1454,6 +1640,7 @@ private fun RenameDialog(
     title: String,
     value: String,
     isDark: Boolean,
+    copy: ChatScreenCopy,
     onValueChange: (String) -> Unit,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
@@ -1505,7 +1692,7 @@ private fun RenameDialog(
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "取消",
+                        text = copy.cancel,
                         color = if (isDark) CognoDarkText else CognoText,
                         textAlign = TextAlign.Center,
                         fontSize = 15.sp,
@@ -1521,7 +1708,7 @@ private fun RenameDialog(
                             .padding(vertical = 12.dp)
                     )
                     Text(
-                        text = "确定",
+                        text = copy.confirm,
                         color = Color.White,
                         textAlign = TextAlign.Center,
                         fontWeight = FontWeight.SemiBold,
@@ -1540,7 +1727,7 @@ private fun RenameDialog(
 }
 
 @Composable
-private fun SidebarFooter(isDark: Boolean, onOpenSettings: () -> Unit) {
+private fun SidebarFooter(isDark: Boolean, copy: ChatScreenCopy, onOpenSettings: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1574,7 +1761,7 @@ private fun SidebarFooter(isDark: Boolean, onOpenSettings: () -> Unit) {
             )
             Icon(
                 imageVector = Icons.Default.MoreHoriz,
-                contentDescription = "设置",
+                contentDescription = copy.settings,
                 tint = CognoMuted,
                 modifier = Modifier.size(22.dp)
             )

@@ -7,6 +7,7 @@ import com.ntoprevd.cogno.data.db.entity.MessageEntity
 import com.ntoprevd.cogno.data.db.entity.SessionEntity
 import com.ntoprevd.cogno.data.repository.GeneratedNoteResult
 import com.ntoprevd.cogno.data.repository.NativeChatRepository
+import com.ntoprevd.cogno.data.settings.AppLanguagePreference
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -84,10 +85,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendMessage() {
+    fun sendMessage(languagePreference: String) {
         val state = uiState.value
         val content = state.inputText.trim()
         if (content.isEmpty() || state.isSending) return
+        val copy = chatViewModelCopy(languagePreference)
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSending = true, errorMessage = null) }
@@ -116,7 +118,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     _uiState.update {
                         it.copy(
                             isSending = false,
-                            errorMessage = error.message ?: "AI 请求失败，请检查 API 配置"
+                            errorMessage = error.message ?: copy.aiRequestFailed
                         )
                     }
                 }
@@ -124,7 +126,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         isSending = false,
-                        errorMessage = error.message ?: "发送失败，请稍后重试"
+                        errorMessage = error.message ?: copy.sendFailed
                     )
                 }
             }
@@ -156,8 +158,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun updateUserMessage(messageId: String, content: String) {
+    fun updateUserMessage(messageId: String, content: String, languagePreference: String) {
         if (uiState.value.isSending) return
+        val copy = chatViewModelCopy(languagePreference)
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSending = true, errorMessage = null) }
@@ -167,14 +170,14 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         isSending = false,
-                        errorMessage = if (regenerated) null else "已修改消息，但没有找到可重新生成的回复"
+                        errorMessage = if (regenerated) null else copy.noReplyToRegenerate
                     )
                 }
             }.onFailure { error ->
                 _uiState.update {
                     it.copy(
                         isSending = false,
-                        errorMessage = error.message ?: "修改后重新生成失败，请稍后重试"
+                        errorMessage = error.message ?: copy.editRegenerateFailed
                     )
                 }
             }
@@ -187,8 +190,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun regenerateAssistantMessage(message: MessageEntity) {
+    fun regenerateAssistantMessage(message: MessageEntity, languagePreference: String) {
         if (uiState.value.isSending) return
+        val copy = chatViewModelCopy(languagePreference)
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSending = true, errorMessage = null) }
@@ -200,22 +204,23 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         isSending = false,
-                        errorMessage = error.message ?: "重新生成失败，请稍后重试"
+                        errorMessage = error.message ?: copy.regenerateFailed
                     )
                 }
             }
         }
     }
 
-    fun generateNote(style: String) {
+    fun generateNote(style: String, languagePreference: String) {
         val sessionId = uiState.value.currentSessionId
         if (sessionId.isNullOrBlank() || uiState.value.isGeneratingNote) return
+        val copy = chatViewModelCopy(languagePreference)
 
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
                     isGeneratingNote = true,
-                    noteToast = NoteToast("正在生成笔记..."),
+                    noteToast = NoteToast(copy.generatingNote),
                     errorMessage = null
                 )
             }
@@ -225,7 +230,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         isGeneratingNote = false,
-                        noteToast = NoteToast(noteResultMessage(result), autoDismiss = true)
+                        noteToast = NoteToast(noteResultMessage(result, copy), autoDismiss = true)
                     )
                 }
                 dismissNoteToastLater()
@@ -234,7 +239,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                     it.copy(
                         isGeneratingNote = false,
                         noteToast = NoteToast(
-                            error.message ?: "生成笔记失败，请稍后重试",
+                            error.message ?: copy.generateNoteFailed,
                             isError = true,
                             autoDismiss = true
                         )
@@ -258,11 +263,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun noteResultMessage(result: GeneratedNoteResult): String {
+    private fun noteResultMessage(result: GeneratedNoteResult, copy: ChatViewModelCopy): String {
         return when (result.status) {
-            GeneratedNoteResult.UPDATED -> "已更新笔记：${result.note.title}"
-            GeneratedNoteResult.UP_TO_DATE -> "笔记已是最新：${result.note.title}"
-            else -> "已保存到笔记库：${result.note.title}"
+            GeneratedNoteResult.UPDATED -> "${copy.noteUpdated}${result.note.title}"
+            GeneratedNoteResult.UP_TO_DATE -> "${copy.noteUpToDate}${result.note.title}"
+            else -> "${copy.noteSaved}${result.note.title}"
         }
     }
 
@@ -281,5 +286,48 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { it.copy(messages = messages) }
             }
         }
+    }
+}
+
+private data class ChatViewModelCopy(
+    val noReplyToRegenerate: String,
+    val editRegenerateFailed: String,
+    val regenerateFailed: String,
+    val generatingNote: String,
+    val generateNoteFailed: String,
+    val noteUpdated: String,
+    val noteUpToDate: String,
+    val noteSaved: String,
+    val aiRequestFailed: String,
+    val sendFailed: String
+)
+
+private fun chatViewModelCopy(languagePreference: String): ChatViewModelCopy {
+    return if (languagePreference == AppLanguagePreference.EN) {
+        ChatViewModelCopy(
+            noReplyToRegenerate = "Message updated, but no reply was found to regenerate",
+            editRegenerateFailed = "Regeneration after editing failed. Please try again later.",
+            regenerateFailed = "Regeneration failed. Please try again later.",
+            generatingNote = "Generating note...",
+            generateNoteFailed = "Failed to generate note. Please try again later.",
+            noteUpdated = "Updated note: ",
+            noteUpToDate = "Note is already up to date: ",
+            noteSaved = "Saved to note library: ",
+            aiRequestFailed = "AI request failed. Please check API settings.",
+            sendFailed = "Failed to send. Please try again later."
+        )
+    } else {
+        ChatViewModelCopy(
+            noReplyToRegenerate = "已修改消息，但没有找到可重新生成的回复",
+            editRegenerateFailed = "修改后重新生成失败，请稍后重试",
+            regenerateFailed = "重新生成失败，请稍后重试",
+            generatingNote = "正在生成笔记...",
+            generateNoteFailed = "生成笔记失败，请稍后重试",
+            noteUpdated = "已更新笔记：",
+            noteUpToDate = "笔记已是最新：",
+            noteSaved = "已保存到笔记库：",
+            aiRequestFailed = "AI 请求失败，请检查 API 配置",
+            sendFailed = "发送失败，请稍后重试"
+        )
     }
 }

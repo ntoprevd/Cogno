@@ -73,6 +73,118 @@ import com.ntoprevd.cogno.ui.theme.isCognoDarkTheme
 import java.io.File
 import kotlinx.coroutines.launch
 
+private data class SettingsCopy(
+    val savedLocal: String,
+    val cacheStatusPrefix: String,
+    val cacheStatusSuffix: String,
+    val settings: String,
+    val back: String,
+    val aiConfig: String,
+    val currentModel: String,
+    val unset: String,
+    val apiConfig: String,
+    val testing: String,
+    val connectionSuccess: String,
+    val connectionFailed: String,
+    val testConnection: String,
+    val save: String,
+    val apiUsage: String,
+    val displayStorage: String,
+    val privacyTerms: String,
+    val modelPresetTitle: String,
+    val responseStyleTitle: String,
+    val appearanceTitle: String,
+    val languageTitle: String,
+    val cancel: String,
+    val saveChangesTitle: String,
+    val saveChangesMessage: String,
+    val dontSave: String,
+    val modelPreset: String,
+    val responseStyle: String,
+    val appearance: String,
+    val language: String,
+    val clearCache: String,
+    val safeMode: String,
+    val cacheSafetyNote: String,
+    val systemPrompt: String
+)
+
+private fun settingsCopy(languagePreference: String): SettingsCopy {
+    return if (languagePreference == AppLanguagePreference.EN) {
+        SettingsCopy(
+            savedLocal = "Saved locally",
+            cacheStatusPrefix = "Temporary cache about ",
+            cacheStatusSuffix = "; chats and notes are kept",
+            settings = "Settings",
+            back = "Back",
+            aiConfig = "AI Settings",
+            currentModel = "Current Model",
+            unset = "Not set",
+            apiConfig = "API Settings",
+            testing = "Testing...",
+            connectionSuccess = "Connection successful",
+            connectionFailed = "Connection failed. Please check your configuration.",
+            testConnection = "Test Connection",
+            save = "Save",
+            apiUsage = "API Usage (This Month)",
+            displayStorage = "Display & Storage",
+            privacyTerms = "Privacy Policy  |  Terms of Service",
+            modelPresetTitle = "Choose Model Preset",
+            responseStyleTitle = "Choose Response Style",
+            appearanceTitle = "Choose Appearance",
+            languageTitle = "Choose Language",
+            cancel = "Cancel",
+            saveChangesTitle = "Save changes?",
+            saveChangesMessage = "There are unsaved changes on this settings page. Save before leaving?",
+            dontSave = "Don't Save",
+            modelPreset = "Model Preset",
+            responseStyle = "Response Style",
+            appearance = "Appearance",
+            language = "Language Settings",
+            clearCache = "Clear Cache",
+            safeMode = "Safe Mode",
+            cacheSafetyNote = "This safe entry only reports temporary cache and does not clear chats, messages, notes, or API settings.",
+            systemPrompt = "System Prompt"
+        )
+    } else {
+        SettingsCopy(
+            savedLocal = "已保存到本机",
+            cacheStatusPrefix = "临时缓存约 ",
+            cacheStatusSuffix = "；聊天和笔记数据已保留",
+            settings = "设置",
+            back = "返回",
+            aiConfig = "AI 配置",
+            currentModel = "当前模型",
+            unset = "未设置",
+            apiConfig = "API 配置",
+            testing = "正在测试...",
+            connectionSuccess = "连接成功",
+            connectionFailed = "连接失败，请检查配置",
+            testConnection = "测试连接",
+            save = "保存",
+            apiUsage = "API 消耗统计（本月）",
+            displayStorage = "显示与存储",
+            privacyTerms = "隐私协议  |  服务条款",
+            modelPresetTitle = "选择模型预设",
+            responseStyleTitle = "选择输出风格",
+            appearanceTitle = "选择外观显示",
+            languageTitle = "选择语言",
+            cancel = "取消",
+            saveChangesTitle = "保存修改？",
+            saveChangesMessage = "检测到设置页面有未保存的修改，离开前是否保存？",
+            dontSave = "不保存",
+            modelPreset = "模型预设",
+            responseStyle = "输出风格",
+            appearance = "外观显示",
+            language = "语言设置",
+            clearCache = "清理缓存",
+            safeMode = "安全模式",
+            cacheSafetyNote = "安全版本只处理临时缓存入口，不清空聊天、消息、笔记和 API 配置。",
+            systemPrompt = "系统提示词"
+        )
+    }
+}
+
 @Composable
 fun SettingsScreen(
     darkModePreference: String,
@@ -84,6 +196,7 @@ fun SettingsScreen(
 ) {
     val isDark = isCognoDarkTheme()
     val background = if (isDark) CognoDarkBackground else CognoBackground
+    val copy = settingsCopy(languagePreference)
     val context = LocalContext.current
     val settingsStore = remember(context) { AiSettingsStore(context) }
     val aiChatClient = remember { AiChatClient() }
@@ -96,9 +209,11 @@ fun SettingsScreen(
     var systemPrompt by remember { mutableStateOf(savedSettings.systemPrompt) }
     var responseStyle by remember { mutableStateOf(savedSettings.responseStyle) }
     var temperature by remember { mutableStateOf(savedSettings.temperature) }
-    var saveStatus by remember { mutableStateOf("") }
-    var testStatus by remember { mutableStateOf("") }
-    var cacheStatus by remember { mutableStateOf("临时缓存约 ${formatBytes(cacheSizeBytes(context.cacheDir))}") }
+    var saveStatus by remember(languagePreference) { mutableStateOf("") }
+    var testStatus by remember(languagePreference) { mutableStateOf("") }
+    var cacheStatus by remember(languagePreference) {
+        mutableStateOf("${copy.cacheStatusPrefix}${formatBytes(cacheSizeBytes(context.cacheDir))}")
+    }
     var modelDialogVisible by remember { mutableStateOf(false) }
     var responseStyleDialogVisible by remember { mutableStateOf(false) }
     var darkModeDialogVisible by remember { mutableStateOf(false) }
@@ -125,7 +240,7 @@ fun SettingsScreen(
             )
         )
         onAiSettingsChanged()
-        saveStatus = "已保存到本机"
+        saveStatus = copy.savedLocal
     }
 
     fun requestBack() {
@@ -143,7 +258,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(background)
     ) {
-        SettingsTopBar(isDark = isDark, onBack = ::requestBack)
+        SettingsTopBar(isDark = isDark, copy = copy, onBack = ::requestBack)
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -153,12 +268,13 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
             ProfileCard(isDark = isDark)
-            SettingsSection(title = "AI 配置", isDark = isDark) {
-                SettingsRow("当前模型", modelId.ifBlank { "未设置" }, isDark)
+            SettingsSection(title = copy.aiConfig, isDark = isDark) {
+                SettingsRow(copy.currentModel, modelId.ifBlank { copy.unset }, isDark)
                 DividerLine(isDark)
                 ModelPresetSection(
                     modelId = modelId,
                     isDark = isDark,
+                    copy = copy,
                     onOpenPicker = { modelDialogVisible = true },
                     onModelSelected = {
                         modelId = it
@@ -170,6 +286,8 @@ fun SettingsScreen(
                 ResponseStyleSelector(
                     value = responseStyle,
                     isDark = isDark,
+                    languagePreference = languagePreference,
+                    copy = copy,
                     onOpenPicker = { responseStyleDialogVisible = true },
                     onValueChange = {
                         responseStyle = it
@@ -182,6 +300,7 @@ fun SettingsScreen(
                 PromptBox(
                     value = systemPrompt,
                     isDark = isDark,
+                    copy = copy,
                     onValueChange = {
                         systemPrompt = it
                         saveStatus = ""
@@ -191,12 +310,12 @@ fun SettingsScreen(
             }
 
             SettingsSection(
-                title = "API 配置",
+                title = copy.apiConfig,
                 isDark = isDark,
                 trailing = {
                     TextButton(
                         onClick = {
-                            testStatus = "正在测试..."
+                            testStatus = copy.testing
                             val settings = currentAiSettings(
                                 apiBaseUrl = apiBaseUrl,
                                 modelId = modelId,
@@ -211,15 +330,15 @@ fun SettingsScreen(
                                 }.onSuccess {
                                     settingsStore.save(settings)
                                     onAiSettingsChanged()
-                                    saveStatus = "已保存到本机"
-                                    testStatus = "连接成功"
+                                    saveStatus = copy.savedLocal
+                                    testStatus = copy.connectionSuccess
                                 }.onFailure { error ->
-                                    testStatus = error.message ?: "连接失败，请检查配置"
+                                    testStatus = error.message ?: copy.connectionFailed
                                 }
                             }
                         }
                     ) {
-                        Text("测试连接", color = if (isDark) CognoDarkPrimary else CognoPrimary)
+                        Text(copy.testConnection, color = if (isDark) CognoDarkPrimary else CognoPrimary)
                     }
                 }
             ) {
@@ -271,14 +390,14 @@ fun SettingsScreen(
                             saveCurrentSettings()
                         }
                     ) {
-                        Text("保存", color = if (isDark) CognoDarkPrimary else CognoPrimary)
+                        Text(copy.save, color = if (isDark) CognoDarkPrimary else CognoPrimary)
                     }
                 }
                 if (testStatus.isNotBlank()) {
                     DividerLine(isDark)
                     Text(
                         text = testStatus,
-                        color = if (testStatus.startsWith("连接成功")) {
+                        color = if (testStatus.startsWith(copy.connectionSuccess)) {
                             if (isDark) CognoDarkPrimary else CognoPrimary
                         } else {
                             Color(0xFFE05650)
@@ -289,7 +408,7 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsSection(title = "API 消耗统计（本月）", isDark = isDark) {
+            SettingsSection(title = copy.apiUsage, isDark = isDark) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -322,10 +441,12 @@ fun SettingsScreen(
                 }
             }
 
-            SettingsSection(title = "显示与存储", isDark = isDark) {
+            SettingsSection(title = copy.displayStorage, isDark = isDark) {
                 DarkModeSelector(
                     value = darkModePreference,
                     isDark = isDark,
+                    languagePreference = languagePreference,
+                    copy = copy,
                     onOpenPicker = { darkModeDialogVisible = true },
                     onValueChange = onDarkModePreferenceChange
                 )
@@ -333,6 +454,7 @@ fun SettingsScreen(
                 LanguageSelector(
                     value = languagePreference,
                     isDark = isDark,
+                    copy = copy,
                     onOpenPicker = { languageDialogVisible = true },
                     onValueChange = onLanguagePreferenceChange
                 )
@@ -340,8 +462,9 @@ fun SettingsScreen(
                 CacheCleanupRow(
                     status = cacheStatus,
                     isDark = isDark,
+                    copy = copy,
                     onClick = {
-                        cacheStatus = "临时缓存约 ${formatBytes(cacheSizeBytes(context.cacheDir))}；聊天和笔记数据已保留"
+                        cacheStatus = "${copy.cacheStatusPrefix}${formatBytes(cacheSizeBytes(context.cacheDir))}${copy.cacheStatusSuffix}"
                     }
                 )
             }
@@ -354,15 +477,16 @@ fun SettingsScreen(
             ) {
                 Text("Cogno v1.1.0-stable", color = CognoMuted, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("隐私协议  |  服务条款", color = if (isDark) CognoDarkPrimary else CognoPrimary, fontSize = 12.sp)
+                Text(copy.privacyTerms, color = if (isDark) CognoDarkPrimary else CognoPrimary, fontSize = 12.sp)
             }
         }
     }
 
     if (modelDialogVisible) {
         SettingsOptionDialog(
-            title = "选择模型预设",
+            title = copy.modelPresetTitle,
             isDark = isDark,
+            cancelText = copy.cancel,
             options = listOf(
                 SettingsOption("deepseek-v4-flash", "V4 Flash"),
                 SettingsOption("deepseek-v4-pro", "V4 Pro")
@@ -380,14 +504,15 @@ fun SettingsScreen(
 
     if (responseStyleDialogVisible) {
         SettingsOptionDialog(
-            title = "选择输出风格",
+            title = copy.responseStyleTitle,
             isDark = isDark,
+            cancelText = copy.cancel,
             options = listOf(
-                SettingsOption(ResponseStylePreference.BALANCED, "理智"),
-                SettingsOption(ResponseStylePreference.COMPREHENSIVE, "全面"),
-                SettingsOption(ResponseStylePreference.CONCISE, "简短"),
-                SettingsOption(ResponseStylePreference.FRIENDLY, "友好"),
-                SettingsOption(ResponseStylePreference.WARM, "热情")
+                SettingsOption(ResponseStylePreference.BALANCED, responseStyleLabel(ResponseStylePreference.BALANCED, languagePreference)),
+                SettingsOption(ResponseStylePreference.COMPREHENSIVE, responseStyleLabel(ResponseStylePreference.COMPREHENSIVE, languagePreference)),
+                SettingsOption(ResponseStylePreference.CONCISE, responseStyleLabel(ResponseStylePreference.CONCISE, languagePreference)),
+                SettingsOption(ResponseStylePreference.FRIENDLY, responseStyleLabel(ResponseStylePreference.FRIENDLY, languagePreference)),
+                SettingsOption(ResponseStylePreference.WARM, responseStyleLabel(ResponseStylePreference.WARM, languagePreference))
             ),
             selectedValue = responseStyle,
             onSelect = {
@@ -403,12 +528,13 @@ fun SettingsScreen(
 
     if (darkModeDialogVisible) {
         SettingsOptionDialog(
-            title = "选择外观显示",
+            title = copy.appearanceTitle,
             isDark = isDark,
+            cancelText = copy.cancel,
             options = listOf(
-                SettingsOption(DarkModePreference.SYSTEM, "跟随系统"),
-                SettingsOption(DarkModePreference.LIGHT, "浅色"),
-                SettingsOption(DarkModePreference.DARK, "深色")
+                SettingsOption(DarkModePreference.SYSTEM, darkModeOptionLabel(DarkModePreference.SYSTEM, languagePreference)),
+                SettingsOption(DarkModePreference.LIGHT, darkModeOptionLabel(DarkModePreference.LIGHT, languagePreference)),
+                SettingsOption(DarkModePreference.DARK, darkModeOptionLabel(DarkModePreference.DARK, languagePreference))
             ),
             selectedValue = darkModePreference,
             onSelect = {
@@ -421,8 +547,9 @@ fun SettingsScreen(
 
     if (languageDialogVisible) {
         SettingsOptionDialog(
-            title = "选择语言",
+            title = copy.languageTitle,
             isDark = isDark,
+            cancelText = copy.cancel,
             options = listOf(
                 SettingsOption(AppLanguagePreference.ZH_CN, "简体中文"),
                 SettingsOption(AppLanguagePreference.EN, "English")
@@ -439,6 +566,7 @@ fun SettingsScreen(
     if (saveConfirmVisible) {
         SaveChangesDialog(
             isDark = isDark,
+            copy = copy,
             onDismiss = { saveConfirmVisible = false },
             onDiscard = {
                 saveConfirmVisible = false
@@ -454,7 +582,7 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SettingsTopBar(isDark: Boolean, onBack: () -> Unit) {
+private fun SettingsTopBar(isDark: Boolean, copy: SettingsCopy, onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -466,12 +594,12 @@ private fun SettingsTopBar(isDark: Boolean, onBack: () -> Unit) {
         IconButton(onClick = onBack) {
             Icon(
                 imageVector = Icons.Default.ArrowBackIosNew,
-                contentDescription = "返回",
+                contentDescription = copy.back,
                 tint = if (isDark) CognoDarkText else CognoText
             )
         }
         Text(
-            text = "设置",
+            text = copy.settings,
             color = if (isDark) CognoDarkText else CognoText,
             fontSize = 17.sp,
             fontWeight = FontWeight.Bold,
@@ -579,7 +707,6 @@ private fun SettingsPickerRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
             .padding(vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -615,6 +742,7 @@ private data class SettingsOption(
 private fun SettingsOptionDialog(
     title: String,
     isDark: Boolean,
+    cancelText: String,
     options: List<SettingsOption>,
     selectedValue: String,
     onSelect: (String) -> Unit,
@@ -653,13 +781,14 @@ private fun SettingsOptionDialog(
                             color = if (isDark) CognoDarkLine else CognoLine,
                             shape = RoundedCornerShape(14.dp)
                         )
-                        .padding(vertical = 4.dp)
                 ) {
                     options.forEachIndexed { index, option ->
                         SettingsOptionRow(
                             option = option,
                             selected = option.value == selectedValue,
                             isDark = isDark,
+                            isFirst = index == 0,
+                            isLast = index == options.lastIndex,
                             onClick = { onSelect(option.value) }
                         )
                         if (index != options.lastIndex) DividerLine(isDark)
@@ -670,7 +799,7 @@ private fun SettingsOptionDialog(
                     onClick = onDismiss,
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Text("取消", color = if (isDark) CognoDarkPrimary else CognoPrimary)
+                    Text(cancelText, color = if (isDark) CognoDarkPrimary else CognoPrimary)
                 }
             }
         }
@@ -682,12 +811,20 @@ private fun SettingsOptionRow(
     option: SettingsOption,
     selected: Boolean,
     isDark: Boolean,
+    isFirst: Boolean,
+    isLast: Boolean,
     onClick: () -> Unit
 ) {
+    val rowShape = RoundedCornerShape(
+        topStart = if (isFirst) 14.dp else 0.dp,
+        topEnd = if (isFirst) 14.dp else 0.dp,
+        bottomStart = if (isLast) 14.dp else 0.dp,
+        bottomEnd = if (isLast) 14.dp else 0.dp
+    )
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(rowShape)
             .background(
                 if (selected) {
                     (if (isDark) CognoDarkPrimary else CognoPrimary).copy(alpha = 0.12f)
@@ -727,6 +864,7 @@ private fun SettingsOptionRow(
 @Composable
 private fun SaveChangesDialog(
     isDark: Boolean,
+    copy: SettingsCopy,
     onDismiss: () -> Unit,
     onDiscard: () -> Unit,
     onSave: () -> Unit
@@ -747,7 +885,7 @@ private fun SaveChangesDialog(
         ) {
             Column(modifier = Modifier.padding(18.dp)) {
                 Text(
-                    text = "保存修改？",
+                    text = copy.saveChangesTitle,
                     color = if (isDark) CognoDarkText else CognoText,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
@@ -756,7 +894,7 @@ private fun SaveChangesDialog(
                 )
                 Spacer(modifier = Modifier.height(10.dp))
                 Text(
-                    text = "检测到设置页面有未保存的修改，离开前是否保存？",
+                    text = copy.saveChangesMessage,
                     color = CognoMuted,
                     fontSize = 13.sp,
                     lineHeight = 19.sp,
@@ -766,7 +904,7 @@ private fun SaveChangesDialog(
                 Spacer(modifier = Modifier.height(16.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "不保存",
+                        text = copy.dontSave,
                         color = if (isDark) CognoDarkText else CognoText,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Medium,
@@ -783,7 +921,7 @@ private fun SaveChangesDialog(
                             .padding(vertical = 12.dp)
                     )
                     Text(
-                        text = "保存",
+                        text = copy.save,
                         color = Color.White,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.SemiBold,
@@ -805,12 +943,13 @@ private fun SaveChangesDialog(
 private fun ModelPresetSection(
     modelId: String,
     isDark: Boolean,
+    copy: SettingsCopy,
     onOpenPicker: () -> Unit,
     onModelSelected: (String) -> Unit
 ) {
     SettingsPickerRow(
-        label = "模型预设",
-        value = modelPresetLabel(modelId),
+        label = copy.modelPreset,
+        value = modelPresetLabel(modelId, copy),
         isDark = isDark,
         onClick = onOpenPicker
     )
@@ -820,14 +959,16 @@ private fun ModelPresetSection(
 private fun ResponseStyleSelector(
     value: String,
     isDark: Boolean,
+    languagePreference: String,
+    copy: SettingsCopy,
     onOpenPicker: () -> Unit,
     onValueChange: (String) -> Unit
 ) {
     val normalized = value.takeIf { it in ResponseStylePreference.all }
         ?: ResponseStylePreference.BALANCED
     SettingsPickerRow(
-        label = "输出风格",
-        value = responseStyleLabel(normalized),
+        label = copy.responseStyle,
+        value = responseStyleLabel(normalized, languagePreference),
         isDark = isDark,
         onClick = onOpenPicker
     )
@@ -888,12 +1029,14 @@ private fun ApiKeyField(
 private fun DarkModeSelector(
     value: String,
     isDark: Boolean,
+    languagePreference: String,
+    copy: SettingsCopy,
     onOpenPicker: () -> Unit,
     onValueChange: (String) -> Unit
 ) {
     SettingsPickerRow(
-        label = "外观显示",
-        value = darkModeLabel(value, isDark),
+        label = copy.appearance,
+        value = darkModeLabel(value, isDark, languagePreference),
         isDark = isDark,
         onClick = onOpenPicker
     )
@@ -903,11 +1046,12 @@ private fun DarkModeSelector(
 private fun LanguageSelector(
     value: String,
     isDark: Boolean,
+    copy: SettingsCopy,
     onOpenPicker: () -> Unit,
     onValueChange: (String) -> Unit
 ) {
     SettingsPickerRow(
-        label = "语言",
+        label = copy.language,
         value = languageLabel(value),
         isDark = isDark,
         onClick = onOpenPicker
@@ -918,16 +1062,32 @@ private fun LanguageSelector(
 private fun CacheCleanupRow(
     status: String,
     isDark: Boolean,
+    copy: SettingsCopy,
     onClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onClick)
-            .padding(vertical = 12.dp)
     ) {
-        SettingsRow("清理临时缓存", "安全模式", isDark)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
+                .padding(vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = copy.clearCache,
+                color = if (isDark) CognoDarkText else CognoText,
+                fontSize = 15.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = copy.safeMode,
+                color = if (isDark) CognoDarkPrimary else CognoPrimary,
+                fontSize = 14.sp
+            )
+        }
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = status,
@@ -937,7 +1097,7 @@ private fun CacheCleanupRow(
         )
         Spacer(modifier = Modifier.height(4.dp))
         Text(
-            text = "安全版本只处理临时缓存入口，不清空聊天、消息、笔记和 API 配置。",
+            text = copy.cacheSafetyNote,
             color = CognoMuted,
             fontSize = 12.sp,
             lineHeight = 18.sp
@@ -971,10 +1131,11 @@ private fun SettingsField(
 private fun PromptBox(
     value: String,
     isDark: Boolean,
+    copy: SettingsCopy,
     onValueChange: (String) -> Unit
 ) {
     Column(modifier = Modifier.padding(vertical = 14.dp)) {
-        Text("系统提示词", color = if (isDark) CognoDarkText else CognoText, fontSize = 15.sp)
+        Text(copy.systemPrompt, color = if (isDark) CognoDarkText else CognoText, fontSize = 15.sp)
         Spacer(modifier = Modifier.height(8.dp))
         SettingsInput(
             value = value,
@@ -1060,21 +1221,22 @@ private object ApiKeyPartialVisualTransformation : VisualTransformation {
     }
 }
 
-private fun responseStyleLabel(value: String): String {
+private fun responseStyleLabel(value: String, languagePreference: String): String {
+    val english = languagePreference == AppLanguagePreference.EN
     return when (value) {
-        ResponseStylePreference.COMPREHENSIVE -> "全面"
-        ResponseStylePreference.FRIENDLY -> "友好"
-        ResponseStylePreference.WARM -> "热情"
-        ResponseStylePreference.CONCISE -> "简短"
-        else -> "理智"
+        ResponseStylePreference.COMPREHENSIVE -> if (english) "Comprehensive" else "全面"
+        ResponseStylePreference.FRIENDLY -> if (english) "Friendly" else "友好"
+        ResponseStylePreference.WARM -> if (english) "Warm" else "热情"
+        ResponseStylePreference.CONCISE -> if (english) "Concise" else "简短"
+        else -> if (english) "Balanced" else "理智"
     }
 }
 
-private fun modelPresetLabel(value: String): String {
+private fun modelPresetLabel(value: String, copy: SettingsCopy): String {
     return when (value) {
         "deepseek-v4-flash" -> "V4 Flash"
         "deepseek-v4-pro" -> "V4 Pro"
-        else -> value.ifBlank { "未设置" }
+        else -> value.ifBlank { copy.unset }
     }
 }
 
@@ -1085,11 +1247,25 @@ private fun languageLabel(value: String): String {
     }
 }
 
-private fun darkModeLabel(value: String, isDark: Boolean): String {
+private fun darkModeOptionLabel(value: String, languagePreference: String): String {
+    val english = languagePreference == AppLanguagePreference.EN
     return when (value) {
-        DarkModePreference.LIGHT -> "浅色"
-        DarkModePreference.DARK -> "深色"
-        else -> if (isDark) "跟随系统：深色" else "跟随系统：浅色"
+        DarkModePreference.LIGHT -> if (english) "Light" else "浅色"
+        DarkModePreference.DARK -> if (english) "Dark" else "深色"
+        else -> if (english) "Follow System" else "跟随系统"
+    }
+}
+
+private fun darkModeLabel(value: String, isDark: Boolean, languagePreference: String): String {
+    val english = languagePreference == AppLanguagePreference.EN
+    return when (value) {
+        DarkModePreference.LIGHT -> if (english) "Light" else "浅色"
+        DarkModePreference.DARK -> if (english) "Dark" else "深色"
+        else -> if (english) {
+            if (isDark) "Follow System: Dark" else "Follow System: Light"
+        } else {
+            if (isDark) "跟随系统：深色" else "跟随系统：浅色"
+        }
     }
 }
 

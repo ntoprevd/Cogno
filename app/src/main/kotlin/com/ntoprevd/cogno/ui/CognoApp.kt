@@ -62,6 +62,7 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
             composable(route = CognoRoutes.CHAT) {
                 ChatScreen(
                     currentModelId = currentModelId,
+                    languagePreference = languagePreference,
                     onOpenNotes = { navController.navigate(CognoRoutes.NOTES) },
                     onOpenSettings = { navController.navigate(CognoRoutes.SETTINGS) },
                     initialSessionId = pendingChatSessionId,
@@ -70,6 +71,7 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
             }
             composable(route = CognoRoutes.NOTES) {
                 NotesScreen(
+                    languagePreference = languagePreference,
                     onBack = { navController.popBackStack() },
                     onOpenNote = { noteId -> navController.navigate(CognoRoutes.noteDetail(noteId)) }
                 )
@@ -80,6 +82,7 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
             ) { entry ->
                 NoteDetailScreen(
                     noteId = entry.arguments?.getString("noteId").orEmpty(),
+                    languagePreference = languagePreference,
                     onBack = { navController.popBackStack() },
                     onOpenChat = { sessionId ->
                         pendingChatSessionId = sessionId

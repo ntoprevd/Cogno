@@ -3,6 +3,7 @@ package com.ntoprevd.cogno.data.repository
 import android.content.Context
 import com.ntoprevd.cogno.data.db.AppDatabase
 import com.ntoprevd.cogno.data.db.entity.NoteEntity
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 
 class NativeNoteRepository(context: Context) {
@@ -13,6 +14,24 @@ class NativeNoteRepository(context: Context) {
 
     fun observeNote(noteId: String): Flow<NoteEntity?> =
         noteDao.observeNoteById(noteId)
+
+    suspend fun createNote(title: String, content: String): NoteEntity {
+        val now = System.currentTimeMillis()
+        val safeContent = content.trim().ifBlank { title.trim() }
+        val note = NoteEntity(
+            id = UUID.randomUUID().toString(),
+            title = title.trim().ifBlank { "新建笔记" },
+            content = safeContent,
+            preview = preview(safeContent),
+            sourceSessionId = null,
+            sourceMessageCount = 0,
+            pinned = false,
+            createdAt = now,
+            updatedAt = now
+        )
+        noteDao.insertNote(note)
+        return note
+    }
 
     suspend fun renameNote(noteId: String, title: String) {
         val note = noteDao.getNoteById(noteId) ?: return

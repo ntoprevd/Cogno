@@ -48,6 +48,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ntoprevd.cogno.data.repository.NativeNoteRepository
+import com.ntoprevd.cogno.data.settings.AppLanguagePreference
+import com.ntoprevd.cogno.ui.common.BasicMarkdown
 import com.ntoprevd.cogno.ui.theme.CognoBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkPrimary
@@ -61,14 +63,59 @@ import com.ntoprevd.cogno.ui.theme.CognoText
 import com.ntoprevd.cogno.ui.theme.isCognoDarkTheme
 import kotlinx.coroutines.launch
 
+private data class NoteDetailCopy(
+    val missingNoteTitle: String,
+    val missingNoteContent: String,
+    val back: String,
+    val view: String,
+    val edit: String,
+    val openChat: String,
+    val share: String,
+    val timePattern: String,
+    val timeLocale: Locale,
+    val sourceSession: (Int) -> String
+)
+
+private fun noteDetailCopy(languagePreference: String): NoteDetailCopy {
+    return if (languagePreference == AppLanguagePreference.EN) {
+        NoteDetailCopy(
+            missingNoteTitle = "Note not found",
+            missingNoteContent = "This note may have been deleted.",
+            back = "Back",
+            view = "View",
+            edit = "Edit",
+            openChat = "Open source chat",
+            share = "Share",
+            timePattern = "MMM d, yyyy HH:mm",
+            timeLocale = Locale.US,
+            sourceSession = { count -> "Source chat · $count messages" }
+        )
+    } else {
+        NoteDetailCopy(
+            missingNoteTitle = "笔记不存在",
+            missingNoteContent = "这条笔记可能已被删除。",
+            back = "返回",
+            view = "查看",
+            edit = "编辑",
+            openChat = "跳转对话",
+            share = "分享",
+            timePattern = "yyyy年M月d日 HH:mm",
+            timeLocale = Locale.CHINA,
+            sourceSession = { count -> "来源会话 · $count 条消息" }
+        )
+    }
+}
+
 @Composable
 fun NoteDetailScreen(
     noteId: String,
+    languagePreference: String,
     onBack: () -> Unit,
     onOpenChat: (String?) -> Unit
 ) {
     val isDark = isCognoDarkTheme()
     val background = if (isDark) CognoDarkBackground else CognoBackground
+    val copy = noteDetailCopy(languagePreference)
     val context = LocalContext.current
     val repository = remember(context) { NativeNoteRepository(context) }
     val scope = rememberCoroutineScope()
@@ -90,6 +137,7 @@ fun NoteDetailScreen(
         NoteDetailTopBar(
             isDark = isDark,
             isEditing = isEditing,
+            copy = copy,
             onBack = onBack,
             onToggleEdit = {
                 if (isEditing) {
@@ -113,7 +161,7 @@ fun NoteDetailScreen(
                 .padding(horizontal = 28.dp, vertical = 18.dp)
         ) {
             Text(
-                text = note?.title ?: "笔记不存在",
+                text = note?.title ?: copy.missingNoteTitle,
                 color = if (isDark) CognoDarkText else CognoText,
                 fontSize = 26.sp,
                 lineHeight = 32.sp,
@@ -121,7 +169,7 @@ fun NoteDetailScreen(
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = note?.let { formatNoteDetailTime(it.updatedAt) } ?: "",
+                text = note?.let { formatNoteDetailTime(it.updatedAt, copy) } ?: "",
                 color = CognoMuted,
                 fontSize = 11.sp,
                 letterSpacing = 1.sp
@@ -129,7 +177,7 @@ fun NoteDetailScreen(
             if (note != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "来源会话 · ${note.sourceMessageCount} 条消息",
+                    text = copy.sourceSession(note.sourceMessageCount),
                     color = if (isDark) CognoDarkPrimary else CognoPrimary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Medium
@@ -143,9 +191,10 @@ fun NoteDetailScreen(
                     onValueChange = { editContent = it }
                 )
             } else {
-                MarkdownLikeContent(
-                    content = note?.content ?: "这条笔记可能已被删除。",
-                    isDark = isDark
+                BasicMarkdown(
+                    content = note?.content ?: copy.missingNoteContent,
+                    isDark = isDark,
+                    modifier = Modifier.fillMaxWidth()
                 )
             }
         }
@@ -156,6 +205,7 @@ fun NoteDetailScreen(
 private fun NoteDetailTopBar(
     isDark: Boolean,
     isEditing: Boolean,
+    copy: NoteDetailCopy,
     onBack: () -> Unit,
     onToggleEdit: () -> Unit,
     onOpenChat: () -> Unit
@@ -172,7 +222,7 @@ private fun NoteDetailTopBar(
         IconButton(onClick = onBack) {
             Icon(
                 imageVector = Icons.Default.ArrowBackIosNew,
-                contentDescription = "返回",
+                contentDescription = copy.back,
                 tint = if (isDark) CognoDarkPrimary else CognoPrimary
             )
         }
@@ -180,15 +230,15 @@ private fun NoteDetailTopBar(
             IconButton(onClick = onToggleEdit) {
                 Icon(
                     imageVector = if (isEditing) Icons.Default.Visibility else Icons.Default.Edit,
-                    contentDescription = if (isEditing) "查看" else "编辑",
+                    contentDescription = if (isEditing) copy.view else copy.edit,
                     tint = if (isDark) CognoDarkPrimary else CognoPrimary
                 )
             }
             IconButton(onClick = onOpenChat) {
-                Icon(Icons.Default.Link, contentDescription = "跳转对话", tint = if (isDark) CognoDarkPrimary else CognoPrimary)
+                Icon(Icons.Default.Link, contentDescription = copy.openChat, tint = if (isDark) CognoDarkPrimary else CognoPrimary)
             }
             IconButton(onClick = { }) {
-                Icon(Icons.Default.IosShare, contentDescription = "分享", tint = if (isDark) CognoDarkPrimary else CognoPrimary)
+                Icon(Icons.Default.IosShare, contentDescription = copy.share, tint = if (isDark) CognoDarkPrimary else CognoPrimary)
             }
         }
     }
@@ -292,6 +342,6 @@ private fun CodeBlock(text: String, isDark: Boolean) {
     )
 }
 
-private fun formatNoteDetailTime(timestamp: Long): String {
-    return SimpleDateFormat("yyyy年M月d日 HH:mm", Locale.CHINA).format(Date(timestamp))
+private fun formatNoteDetailTime(timestamp: Long, copy: NoteDetailCopy): String {
+    return SimpleDateFormat(copy.timePattern, copy.timeLocale).format(Date(timestamp))
 }
