@@ -118,6 +118,7 @@ import com.ntoprevd.cogno.ui.theme.CognoSurface
 import com.ntoprevd.cogno.ui.theme.CognoText
 import com.ntoprevd.cogno.ui.theme.CognoUserBubble
 import com.ntoprevd.cogno.ui.theme.isCognoDarkTheme
+import com.ntoprevd.cogno.ui.settings.UserAvatar
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -282,6 +283,8 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
 fun ChatScreen(
     currentModelId: String,
     languagePreference: String,
+    userName: String,
+    avatarUri: String,
     onOpenNotes: () -> Unit,
     onOpenSettings: () -> Unit,
     initialSessionId: String? = null,
@@ -402,7 +405,9 @@ fun ChatScreen(
             onOpenSettings = {
                 viewModel.closeDrawer()
                 onOpenSettings()
-            }
+            },
+            userName = userName,
+            avatarUri = avatarUri
         )
 
         if (noteStyleDialogVisible) {
@@ -1186,7 +1191,9 @@ private fun SidebarDrawer(
     onTogglePinSession: (SessionEntity) -> Unit,
     onDeleteSession: (String) -> Unit,
     onOpenNotes: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    userName: String,
+    avatarUri: String
 ) {
     val scope = rememberCoroutineScope()
     val drawerProgress = remember { Animatable(if (isOpen) 1f else 0f) }
@@ -1377,7 +1384,13 @@ private fun SidebarDrawer(
                         }
                     }
                 }
-                SidebarFooter(isDark = isDark, copy = copy, onOpenSettings = onOpenSettings)
+                SidebarFooter(
+                    userName = userName,
+                    avatarUri = avatarUri,
+                    isDark = isDark,
+                    copy = copy,
+                    onOpenSettings = onOpenSettings
+                )
             }
         }
 
@@ -1727,7 +1740,13 @@ private fun RenameDialog(
 }
 
 @Composable
-private fun SidebarFooter(isDark: Boolean, copy: ChatScreenCopy, onOpenSettings: () -> Unit) {
+private fun SidebarFooter(
+    userName: String,
+    avatarUri: String,
+    isDark: Boolean,
+    copy: ChatScreenCopy,
+    onOpenSettings: () -> Unit
+) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1742,18 +1761,10 @@ private fun SidebarFooter(isDark: Boolean, copy: ChatScreenCopy, onOpenSettings:
                 .padding(horizontal = 12.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                modifier = Modifier
-                    .size(38.dp)
-                    .clip(CircleShape)
-                    .background(if (isDark) CognoDarkPrimary else CognoPrimary),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("JD", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-            }
+            UserAvatar(userName = userName, avatarUri = avatarUri, size = 38, isDark = isDark)
             Spacer(modifier = Modifier.width(10.dp))
             Text(
-                text = "Jane Doe",
+                text = userName,
                 color = if (isDark) CognoDarkText else CognoText,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,

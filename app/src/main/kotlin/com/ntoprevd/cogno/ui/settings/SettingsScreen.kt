@@ -1,5 +1,9 @@
 package com.ntoprevd.cogno.ui.settings
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -18,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
@@ -33,6 +36,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -53,10 +58,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
+import com.ntoprevd.cogno.data.db.AppDatabase
 import com.ntoprevd.cogno.data.network.AiChatClient
+import com.ntoprevd.cogno.data.network.ExperienceModel
 import com.ntoprevd.cogno.data.settings.AiSettings
 import com.ntoprevd.cogno.data.settings.AiSettingsStore
+import com.ntoprevd.cogno.data.settings.AiSourceMode
 import com.ntoprevd.cogno.data.settings.AppLanguagePreference
+import com.ntoprevd.cogno.data.settings.CustomAiProvider
 import com.ntoprevd.cogno.data.settings.DarkModePreference
 import com.ntoprevd.cogno.data.settings.ResponseStylePreference
 import com.ntoprevd.cogno.ui.theme.CognoBackground
@@ -71,6 +80,9 @@ import com.ntoprevd.cogno.ui.theme.CognoPrimary
 import com.ntoprevd.cogno.ui.theme.CognoText
 import com.ntoprevd.cogno.ui.theme.isCognoDarkTheme
 import java.io.File
+import java.text.NumberFormat
+import java.util.Calendar
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 private data class SettingsCopy(
@@ -187,6 +199,10 @@ private fun settingsCopy(languagePreference: String): SettingsCopy {
 
 @Composable
 fun SettingsScreen(
+    userName: String,
+    avatarUri: String,
+    onOpenProfile: () -> Unit,
+    onOpenTopics: () -> Unit,
     darkModePreference: String,
     onDarkModePreferenceChange: (String) -> Unit,
     languagePreference: String,
@@ -199,13 +215,24 @@ fun SettingsScreen(
     val copy = settingsCopy(languagePreference)
     val context = LocalContext.current
     val settingsStore = remember(context) { AiSettingsStore(context) }
-    val aiChatClient = remember { AiChatClient() }
+    val aiChatClient = remember(context) { AiChatClient(context) }
     val scope = rememberCoroutineScope()
-    val savedSettings = remember { settingsStore.load() }
+    var savedSettings by remember { mutableStateOf(settingsStore.load()) }
+    val monthStart = remember { currentMonthStartMillis() }
+    val messageDao = remember(context) { AppDatabase.getInstance(context).messageDao() }
+    val recordedTokens by remember(monthStart) {
+        messageDao.observeRecordedTokensSince(monthStart)
+    }.collectAsState(initial = 0L)
+    val recordedRequests by remember(monthStart) {
+        messageDao.observeRecordedRequestsSince(monthStart)
+    }.collectAsState(initial = 0)
 
     var apiBaseUrl by remember { mutableStateOf(savedSettings.apiBaseUrl) }
     var modelId by remember { mutableStateOf(savedSettings.modelId) }
     var apiKey by remember { mutableStateOf(savedSettings.apiKey) }
+    var sourceMode by remember { mutableStateOf(savedSettings.sourceMode) }
+    var customProvider by remember { mutableStateOf(savedSettings.customProvider) }
+    var experienceModels by remember { mutableStateOf<List<ExperienceModel>>(emptyList()) }
     var systemPrompt by remember { mutableStateOf(savedSettings.systemPrompt) }
     var responseStyle by remember { mutableStateOf(savedSettings.responseStyle) }
     var temperature by remember { mutableStateOf(savedSettings.temperature) }
@@ -215,13 +242,34 @@ fun SettingsScreen(
         mutableStateOf("${copy.cacheStatusPrefix}${formatBytes(cacheSizeBytes(context.cacheDir))}")
     }
     var modelDialogVisible by remember { mutableStateOf(false) }
+    var sourceModeDialogVisible by remember { mutableStateOf(false) }
+    var providerDialogVisible by remember { mutableStateOf(false) }
     var responseStyleDialogVisible by remember { mutableStateOf(false) }
     var darkModeDialogVisible by remember { mutableStateOf(false) }
     var languageDialogVisible by remember { mutableStateOf(false) }
     var saveConfirmVisible by remember { mutableStateOf(false) }
+    val experienceModelOptions = if (experienceModels.isNotEmpty()) {
+        experienceModels.map { model ->
+            SettingsOption(
+                model.id,
+                listOf(model.label, model.description).filter { it.isNotBlank() }.joinToString(" · ")
+            )
+        }
+    } else {
+        listOf(
+            SettingsOption("glm-4.5-air", "GLM-4.5-Air · 深度思考"),
+            SettingsOption("glm-4.6v", "GLM-4.6V · 视觉理解"),
+            SettingsOption("glm-4-flash", "GLM-4-Flash · 文本生成")
+        )
+    }
+    val customModelOptions = CustomAiProvider.modelPresets(customProvider).map {
+        SettingsOption(it, it)
+    }
 
     val hasUnsavedChanges =
-        apiBaseUrl != savedSettings.apiBaseUrl ||
+        sourceMode != savedSettings.sourceMode ||
+            customProvider != savedSettings.customProvider ||
+            apiBaseUrl != savedSettings.apiBaseUrl ||
             modelId != savedSettings.modelId ||
             apiKey != savedSettings.apiKey ||
             systemPrompt != savedSettings.systemPrompt ||
@@ -229,18 +277,26 @@ fun SettingsScreen(
             temperature != savedSettings.temperature
 
     fun saveCurrentSettings() {
-        settingsStore.save(
-            currentAiSettings(
-                apiBaseUrl = apiBaseUrl,
-                modelId = modelId,
-                apiKey = apiKey,
-                systemPrompt = systemPrompt,
-                responseStyle = responseStyle,
-                temperature = temperature
-            )
+        val settings = currentAiSettings(
+            sourceMode = sourceMode,
+            customProvider = customProvider,
+            apiBaseUrl = apiBaseUrl,
+            modelId = modelId,
+            apiKey = apiKey,
+            systemPrompt = systemPrompt,
+            responseStyle = responseStyle,
+            temperature = temperature
         )
+        settingsStore.save(settings)
+        savedSettings = settings
         onAiSettingsChanged()
         saveStatus = copy.savedLocal
+    }
+
+    LaunchedEffect(sourceMode) {
+        if (sourceMode == AiSourceMode.EXPERIENCE) {
+            experienceModels = runCatching { aiChatClient.fetchExperienceModels() }.getOrDefault(emptyList())
+        }
     }
 
     fun requestBack() {
@@ -267,9 +323,32 @@ fun SettingsScreen(
                 .padding(horizontal = 20.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(22.dp)
         ) {
-            ProfileCard(isDark = isDark)
+            ProfileCard(
+                userName = userName,
+                avatarUri = avatarUri,
+                isDark = isDark,
+                onClick = onOpenProfile
+            )
             SettingsSection(title = copy.aiConfig, isDark = isDark) {
-                SettingsRow(copy.currentModel, modelId.ifBlank { copy.unset }, isDark)
+                SettingsPickerRow(
+                    label = if (languagePreference == AppLanguagePreference.EN) "Model Source" else "模型来源",
+                    value = sourceModeLabel(sourceMode, languagePreference),
+                    isDark = isDark,
+                    onClick = { sourceModeDialogVisible = true }
+                )
+                DividerLine(isDark)
+                SettingsPickerRow(
+                    label = if (languagePreference == AppLanguagePreference.EN) "Provider" else "模型平台",
+                    value = if (sourceMode == AiSourceMode.EXPERIENCE) {
+                        "GLM"
+                    } else {
+                        customProviderLabel(customProvider)
+                    },
+                    isDark = isDark,
+                    onClick = {
+                        if (sourceMode == AiSourceMode.CUSTOM) providerDialogVisible = true
+                    }
+                )
                 DividerLine(isDark)
                 ModelPresetSection(
                     modelId = modelId,
@@ -307,16 +386,14 @@ fun SettingsScreen(
                         testStatus = ""
                     }
                 )
-            }
-
-            SettingsSection(
-                title = copy.apiConfig,
-                isDark = isDark,
-                trailing = {
+                if (sourceMode == AiSourceMode.EXPERIENCE) {
+                    DividerLine(isDark)
                     TextButton(
                         onClick = {
                             testStatus = copy.testing
                             val settings = currentAiSettings(
+                                sourceMode = sourceMode,
+                                customProvider = customProvider,
                                 apiBaseUrl = apiBaseUrl,
                                 modelId = modelId,
                                 apiKey = apiKey,
@@ -325,123 +402,158 @@ fun SettingsScreen(
                                 temperature = temperature
                             )
                             scope.launch {
-                                runCatching {
-                                    aiChatClient.testConnection(settings)
-                                }.onSuccess {
-                                    settingsStore.save(settings)
-                                    onAiSettingsChanged()
-                                    saveStatus = copy.savedLocal
-                                    testStatus = copy.connectionSuccess
-                                }.onFailure { error ->
-                                    testStatus = error.message ?: copy.connectionFailed
-                                }
+                                runCatching { aiChatClient.testConnection(settings) }
+                                    .onSuccess {
+                                        settingsStore.save(settings)
+                                        savedSettings = settings
+                                        onAiSettingsChanged()
+                                        saveStatus = copy.savedLocal
+                                        testStatus = copy.connectionSuccess
+                                    }
+                                    .onFailure { testStatus = it.message ?: copy.connectionFailed }
                             }
-                        }
+                        },
+                        modifier = Modifier.align(Alignment.End)
                     ) {
                         Text(copy.testConnection, color = if (isDark) CognoDarkPrimary else CognoPrimary)
                     }
+                    if (testStatus.isNotBlank()) {
+                        Text(
+                            testStatus,
+                            color = if (testStatus.startsWith(copy.connectionSuccess)) {
+                                if (isDark) CognoDarkPrimary else CognoPrimary
+                            } else {
+                                Color(0xFFE05650)
+                            },
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+                    }
                 }
+            }
+
+            AnimatedVisibility(
+                visible = sourceMode == AiSourceMode.CUSTOM,
+                enter = expandVertically(animationSpec = tween(300)),
+                exit = shrinkVertically(animationSpec = tween(300))
             ) {
-                SettingsField(
-                    label = "Model ID",
-                    value = modelId,
-                    placeholder = AiSettings.DEFAULT_MODEL_ID,
+                SettingsSection(
+                    title = copy.apiConfig,
                     isDark = isDark,
-                    onValueChange = {
-                        modelId = it
-                        saveStatus = ""
-                        testStatus = ""
-                    }
-                )
-                DividerLine(isDark)
-                SettingsField(
-                    label = "API Base URL",
-                    value = apiBaseUrl,
-                    placeholder = AiSettings.DEFAULT_API_BASE_URL,
-                    isDark = isDark,
-                    onValueChange = {
-                        apiBaseUrl = it
-                        saveStatus = ""
-                        testStatus = ""
-                    }
-                )
-                DividerLine(isDark)
-                ApiKeyField(
-                    value = apiKey,
-                    isDark = isDark,
-                    onValueChange = {
-                        apiKey = it
-                        saveStatus = ""
-                        testStatus = ""
-                    }
-                )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = saveStatus,
-                        color = if (isDark) CognoDarkPrimary else CognoPrimary,
-                        fontSize = 12.sp
-                    )
-                    TextButton(
-                        onClick = {
-                            saveCurrentSettings()
+                    trailing = {
+                        TextButton(
+                            onClick = {
+                                testStatus = copy.testing
+                                val settings = currentAiSettings(
+                                    sourceMode = sourceMode,
+                                    customProvider = customProvider,
+                                    apiBaseUrl = apiBaseUrl,
+                                    modelId = modelId,
+                                    apiKey = apiKey,
+                                    systemPrompt = systemPrompt,
+                                    responseStyle = responseStyle,
+                                    temperature = temperature
+                                )
+                                scope.launch {
+                                    runCatching {
+                                        aiChatClient.testConnection(settings)
+                                    }.onSuccess {
+                                        settingsStore.save(settings)
+                                        savedSettings = settings
+                                        onAiSettingsChanged()
+                                        saveStatus = copy.savedLocal
+                                        testStatus = copy.connectionSuccess
+                                    }.onFailure { error ->
+                                        testStatus = error.message ?: copy.connectionFailed
+                                    }
+                                }
+                            }
+                        ) {
+                            Text(copy.testConnection, color = if (isDark) CognoDarkPrimary else CognoPrimary)
                         }
-                    ) {
-                        Text(copy.save, color = if (isDark) CognoDarkPrimary else CognoPrimary)
                     }
-                }
-                if (testStatus.isNotBlank()) {
-                    DividerLine(isDark)
-                    Text(
-                        text = testStatus,
-                        color = if (testStatus.startsWith(copy.connectionSuccess)) {
-                            if (isDark) CognoDarkPrimary else CognoPrimary
-                        } else {
-                            Color(0xFFE05650)
-                        },
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(vertical = 12.dp)
+                ) {
+                    SettingsField(
+                        label = "Model ID",
+                        value = modelId,
+                        placeholder = AiSettings.DEFAULT_MODEL_ID,
+                        isDark = isDark,
+                        onValueChange = {
+                            modelId = it
+                            saveStatus = ""
+                            testStatus = ""
+                        }
                     )
+                    DividerLine(isDark)
+                    SettingsField(
+                        label = "API Base URL",
+                        value = apiBaseUrl,
+                        placeholder = AiSettings.DEFAULT_API_BASE_URL,
+                        isDark = isDark,
+                        onValueChange = {
+                            apiBaseUrl = it
+                            saveStatus = ""
+                            testStatus = ""
+                        }
+                    )
+                    DividerLine(isDark)
+                    ApiKeyField(
+                        value = apiKey,
+                        isDark = isDark,
+                        onValueChange = {
+                            apiKey = it
+                            saveStatus = ""
+                            testStatus = ""
+                        }
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = saveStatus,
+                            color = if (isDark) CognoDarkPrimary else CognoPrimary,
+                            fontSize = 12.sp
+                        )
+                        TextButton(onClick = ::saveCurrentSettings) {
+                            Text(copy.save, color = if (isDark) CognoDarkPrimary else CognoPrimary)
+                        }
+                    }
+                    if (testStatus.isNotBlank()) {
+                        DividerLine(isDark)
+                        Text(
+                            text = testStatus,
+                            color = if (testStatus.startsWith(copy.connectionSuccess)) {
+                                if (isDark) CognoDarkPrimary else CognoPrimary
+                            } else {
+                                Color(0xFFE05650)
+                            },
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
+                    }
                 }
             }
 
             SettingsSection(title = copy.apiUsage, isDark = isDark) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.Bottom
-                ) {
-                    Column {
-                        Text("Estimated Cost", color = CognoMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        Text("¥ 2.45", color = if (isDark) CognoDarkText else CognoText, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-                    }
-                    Column(horizontalAlignment = Alignment.End) {
-                        Text("Total Tokens", color = CognoMuted, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        Text("842.1k", color = if (isDark) CognoDarkText else CognoText, fontSize = 14.sp, fontWeight = FontWeight.Medium)
-                    }
-                }
-                Spacer(modifier = Modifier.height(14.dp))
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (isDark) CognoDarkBackground else CognoBackground)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth(0.65f)
-                            .height(8.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (isDark) CognoDarkPrimary else CognoPrimary)
-                    )
-                }
+                ApiUsageCard(
+                    tokens = recordedTokens,
+                    requests = recordedRequests,
+                    modelId = modelId,
+                    languagePreference = languagePreference,
+                    isDark = isDark
+                )
             }
 
             SettingsSection(title = copy.displayStorage, isDark = isDark) {
+                SettingsPickerRow(
+                    label = if (languagePreference == AppLanguagePreference.EN) "Topic Rules" else "主题规则",
+                    value = if (languagePreference == AppLanguagePreference.EN) "Manage" else "管理",
+                    isDark = isDark,
+                    onClick = onOpenTopics
+                )
+                DividerLine(isDark)
                 DarkModeSelector(
                     value = darkModePreference,
                     isDark = isDark,
@@ -487,10 +599,11 @@ fun SettingsScreen(
             title = copy.modelPresetTitle,
             isDark = isDark,
             cancelText = copy.cancel,
-            options = listOf(
-                SettingsOption("deepseek-v4-flash", "V4 Flash"),
-                SettingsOption("deepseek-v4-pro", "V4 Pro")
-            ),
+            options = if (sourceMode == AiSourceMode.EXPERIENCE) {
+                experienceModelOptions
+            } else {
+                customModelOptions.ifEmpty { listOf(SettingsOption(modelId, modelId.ifBlank { copy.unset })) }
+            },
             selectedValue = modelId,
             onSelect = {
                 modelId = it
@@ -499,6 +612,56 @@ fun SettingsScreen(
                 modelDialogVisible = false
             },
             onDismiss = { modelDialogVisible = false }
+        )
+    }
+
+    if (sourceModeDialogVisible) {
+        SettingsOptionDialog(
+            title = if (languagePreference == AppLanguagePreference.EN) "Choose Model Source" else "选择模型来源",
+            isDark = isDark,
+            cancelText = copy.cancel,
+            options = listOf(
+                SettingsOption(AiSourceMode.EXPERIENCE, if (languagePreference == AppLanguagePreference.EN) "Experience Models" else "体验模型"),
+                SettingsOption(AiSourceMode.CUSTOM, if (languagePreference == AppLanguagePreference.EN) "Custom API" else "自定义 API")
+            ),
+            selectedValue = sourceMode,
+            onSelect = { value ->
+                sourceMode = value
+                modelId = if (value == AiSourceMode.EXPERIENCE) {
+                    experienceModelOptions.firstOrNull()?.value ?: "glm-4-flash"
+                } else {
+                    CustomAiProvider.modelPresets(customProvider).firstOrNull()
+                        ?: modelId
+                }
+                saveStatus = ""
+                testStatus = ""
+                sourceModeDialogVisible = false
+            },
+            onDismiss = { sourceModeDialogVisible = false }
+        )
+    }
+
+    if (providerDialogVisible) {
+        SettingsOptionDialog(
+            title = if (languagePreference == AppLanguagePreference.EN) "Choose Provider" else "选择模型平台",
+            isDark = isDark,
+            cancelText = copy.cancel,
+            options = listOf(
+                SettingsOption(CustomAiProvider.DEEPSEEK, "DeepSeek"),
+                SettingsOption(CustomAiProvider.OPENAI, "OpenAI"),
+                SettingsOption(CustomAiProvider.GLM, "GLM"),
+                SettingsOption(CustomAiProvider.OTHER, if (languagePreference == AppLanguagePreference.EN) "Other compatible API" else "其他兼容 API")
+            ),
+            selectedValue = customProvider,
+            onSelect = { value ->
+                customProvider = value
+                CustomAiProvider.defaultBaseUrl(value).takeIf { it.isNotBlank() }?.let { apiBaseUrl = it }
+                CustomAiProvider.modelPresets(value).firstOrNull()?.let { modelId = it }
+                saveStatus = ""
+                testStatus = ""
+                providerDialogVisible = false
+            },
+            onDismiss = { providerDialogVisible = false }
         )
     }
 
@@ -609,32 +772,105 @@ private fun SettingsTopBar(isDark: Boolean, copy: SettingsCopy, onBack: () -> Un
 }
 
 @Composable
-private fun ProfileCard(isDark: Boolean) {
+private fun ProfileCard(
+    userName: String,
+    avatarUri: String,
+    isDark: Boolean,
+    onClick: () -> Unit
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(22.dp))
             .background(if (isDark) CognoDarkSurface else Color.White)
+            .clickable(onClick = onClick)
             .padding(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(
-            modifier = Modifier
-                .size(56.dp)
-                .clip(CircleShape)
-                .background(if (isDark) CognoDarkPrimary else CognoPrimary),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("JD", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-        }
+        UserAvatar(userName = userName, avatarUri = avatarUri, size = 56, isDark = isDark)
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text("Jane Doe", color = if (isDark) CognoDarkText else CognoText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            Text("jane.doe@cogno.ai", color = CognoMuted, fontSize = 12.sp)
+            Text(userName, color = if (isDark) CognoDarkText else CognoText, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            Text("Local profile", color = CognoMuted, fontSize = 12.sp)
         }
         Icon(Icons.Default.ChevronRight, contentDescription = null, tint = CognoMuted)
     }
 }
+
+@Composable
+private fun ApiUsageCard(
+    tokens: Long,
+    requests: Int,
+    modelId: String,
+    languagePreference: String,
+    isDark: Boolean
+) {
+    val isEnglish = languagePreference == AppLanguagePreference.EN
+    // API 目前稳定返回总 token，费用使用按模型区分的混合单价进行估算。
+    val estimatedCostCny = tokens / 1_000_000.0 * estimatedCnyPerMillionTokens(modelId)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Column {
+            Text(
+                if (isEnglish) "Estimated Cost" else "预估费用",
+                color = CognoMuted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                "¥${String.format(Locale.US, "%.4f", estimatedCostCny)}",
+                color = if (isDark) CognoDarkText else CognoText,
+                fontSize = 26.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
+        Column(horizontalAlignment = Alignment.End) {
+            Text(
+                if (isEnglish) "Provider-recorded Tokens" else "服务端记录 Token",
+                color = CognoMuted,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                NumberFormat.getIntegerInstance().format(tokens),
+                color = if (isDark) CognoDarkText else CognoText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+    Spacer(modifier = Modifier.height(10.dp))
+    Text(
+        text = if (isEnglish) {
+            "$requests completed requests this month. Cost uses a blended token-rate estimate."
+        } else {
+            "本月 $requests 次已完成请求。Token 来自 API usage，费用按混合单价估算。"
+        },
+        color = CognoMuted,
+        fontSize = 11.sp,
+        lineHeight = 17.sp
+    )
+}
+
+private fun estimatedCnyPerMillionTokens(modelId: String): Double {
+    return when {
+        modelId.contains("pro", ignoreCase = true) -> 8.0
+        modelId.contains("flash", ignoreCase = true) -> 2.0
+        else -> 4.0
+    }
+}
+
+private fun currentMonthStartMillis(): Long =
+    Calendar.getInstance().apply {
+        set(Calendar.DAY_OF_MONTH, 1)
+        set(Calendar.HOUR_OF_DAY, 0)
+        set(Calendar.MINUTE, 0)
+        set(Calendar.SECOND, 0)
+        set(Calendar.MILLISECOND, 0)
+    }.timeInMillis
 
 @Composable
 private fun SettingsSection(
@@ -1191,6 +1427,8 @@ private fun SettingsInput(
 }
 
 private fun currentAiSettings(
+    sourceMode: String,
+    customProvider: String,
     apiBaseUrl: String,
     modelId: String,
     apiKey: String,
@@ -1199,6 +1437,8 @@ private fun currentAiSettings(
     temperature: Double
 ): AiSettings {
     return AiSettings(
+        sourceMode = sourceMode,
+        customProvider = customProvider,
         apiBaseUrl = apiBaseUrl,
         modelId = modelId,
         apiKey = apiKey,
@@ -1206,6 +1446,22 @@ private fun currentAiSettings(
         responseStyle = responseStyle,
         temperature = temperature
     )
+}
+
+private fun sourceModeLabel(value: String, languagePreference: String): String {
+    val english = languagePreference == AppLanguagePreference.EN
+    return if (value == AiSourceMode.EXPERIENCE) {
+        if (english) "Experience Models" else "体验模型"
+    } else {
+        if (english) "Custom API" else "自定义 API"
+    }
+}
+
+private fun customProviderLabel(value: String): String = when (value) {
+    CustomAiProvider.OPENAI -> "OpenAI"
+    CustomAiProvider.GLM -> "GLM"
+    CustomAiProvider.OTHER -> "Other"
+    else -> "DeepSeek"
 }
 
 private object ApiKeyPartialVisualTransformation : VisualTransformation {
@@ -1233,11 +1489,7 @@ private fun responseStyleLabel(value: String, languagePreference: String): Strin
 }
 
 private fun modelPresetLabel(value: String, copy: SettingsCopy): String {
-    return when (value) {
-        "deepseek-v4-flash" -> "V4 Flash"
-        "deepseek-v4-pro" -> "V4 Pro"
-        else -> value.ifBlank { copy.unset }
-    }
+    return value.ifBlank { copy.unset }
 }
 
 private fun languageLabel(value: String): String {

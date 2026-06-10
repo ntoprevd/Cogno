@@ -33,7 +33,8 @@ class NativeChatRepository(context: Context) {
     private val messageDao = database.messageDao()
     private val noteDao = database.noteDao()
     private val settingsStore = AiSettingsStore(context)
-    private val aiChatClient = AiChatClient()
+    private val aiChatClient = AiChatClient(context)
+    private val topicRepository = TopicRepository(context)
 
     fun observeSessions(): Flow<List<SessionEntity>> =
         sessionDao.observeAllSessionsOrderByUpdatedAtDesc()
@@ -209,12 +210,19 @@ class NativeChatRepository(context: Context) {
         }
 
         val settings = settingsStore.load()
+        val topicNames = topicRepository.enabledTopics().map { it.name }
+        val messagesToSummarize = if (existingNote == null) {
+            messages
+        } else {
+            messages.drop(existingNote.sourceMessageCount.coerceAtMost(messages.size))
+        }
         val draft = aiChatClient.requestNoteDraft(
             settings = settings,
             conversationTitle = session.title,
-            conversationText = buildConversationText(messages),
+            conversationText = buildConversationText(messagesToSummarize),
             style = style,
-            existingContent = existingNote?.content
+            existingContent = existingNote?.content,
+            topicNames = topicNames
         )
         val now = System.currentTimeMillis()
         if (existingNote != null) {
@@ -224,6 +232,7 @@ class NativeChatRepository(context: Context) {
             existingNote.sourceMessageCount = messages.size
             existingNote.updatedAt = now
             noteDao.updateNote(existingNote)
+            topicRepository.syncSegments(existingNote, draft.segments, messages.size)
             return GeneratedNoteResult(existingNote, GeneratedNoteResult.UPDATED)
         }
 
@@ -239,6 +248,7 @@ class NativeChatRepository(context: Context) {
             updatedAt = now
         )
         noteDao.insertNote(note)
+        topicRepository.syncSegments(note, draft.segments, messages.size)
         return GeneratedNoteResult(note, GeneratedNoteResult.CREATED)
     }
 

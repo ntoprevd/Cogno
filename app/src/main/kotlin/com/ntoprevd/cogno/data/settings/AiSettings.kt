@@ -1,6 +1,8 @@
 package com.ntoprevd.cogno.data.settings
 
 data class AiSettings(
+    val sourceMode: String = AiSourceMode.CUSTOM,
+    val customProvider: String = CustomAiProvider.DEEPSEEK,
     val apiBaseUrl: String = DEFAULT_API_BASE_URL,
     val modelId: String = DEFAULT_MODEL_ID,
     val apiKey: String = "",
@@ -9,12 +11,40 @@ data class AiSettings(
     val temperature: Double = ResponseStylePreference.temperatureFor(ResponseStylePreference.BALANCED)
 ) {
     val hasApiKey: Boolean
-        get() = apiKey.isNotBlank()
+        get() = sourceMode == AiSourceMode.EXPERIENCE || apiKey.isNotBlank()
 
     companion object {
         const val DEFAULT_API_BASE_URL = "https://api.deepseek.com/v1"
         const val DEFAULT_MODEL_ID = "deepseek-v4-flash"
         const val DEFAULT_SYSTEM_PROMPT = "你是 Cogno，一个简洁、可靠、善于整理思路的 AI 助手。"
+    }
+}
+
+object AiSourceMode {
+    const val EXPERIENCE = "experience"
+    const val CUSTOM = "custom"
+    val all = listOf(EXPERIENCE, CUSTOM)
+}
+
+object CustomAiProvider {
+    const val DEEPSEEK = "deepseek"
+    const val OPENAI = "openai"
+    const val GLM = "glm"
+    const val OTHER = "other"
+    val all = listOf(DEEPSEEK, OPENAI, GLM, OTHER)
+
+    fun defaultBaseUrl(value: String): String = when (value) {
+        OPENAI -> "https://api.openai.com/v1"
+        GLM -> "https://open.bigmodel.cn/api/paas/v4"
+        DEEPSEEK -> AiSettings.DEFAULT_API_BASE_URL
+        else -> ""
+    }
+
+    fun modelPresets(value: String): List<String> = when (value) {
+        OPENAI -> listOf("gpt-5.5", "gpt-5.4", "gpt-5.4-mini")
+        GLM -> listOf("glm-4.5-air", "glm-4.6v", "glm-4-flash")
+        DEEPSEEK -> listOf("deepseek-v4-flash", "deepseek-v4-pro")
+        else -> emptyList()
     }
 }
 

@@ -1,0 +1,8 @@
+name = "cogno-model-gateway"
+main = "cloudflare-worker.js"
+compatibility_date = "2026-06-10"
+
+[vars]
+COGNO_GATEWAY_ENABLED = "true"
+MAX_INPUT_CHARS = "60000"
+MAX_OUTPUT_TOKENS = "8192"

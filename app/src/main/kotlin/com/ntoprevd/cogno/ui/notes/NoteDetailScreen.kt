@@ -1,10 +1,12 @@
 package com.ntoprevd.cogno.ui.notes
 
+import android.content.Intent
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +30,9 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -44,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -124,6 +130,7 @@ fun NoteDetailScreen(
         .value
     var isEditing by remember { mutableStateOf(false) }
     var editContent by remember { mutableStateOf("") }
+    var exportDialogVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(note?.id) {
         editContent = note?.content.orEmpty()
@@ -150,7 +157,8 @@ fun NoteDetailScreen(
                     isEditing = true
                 }
             },
-            onOpenChat = { onOpenChat(note?.sourceSessionId) }
+            onOpenChat = { onOpenChat(note?.sourceSessionId) },
+            onExport = { if (note != null) exportDialogVisible = true }
         )
         Column(
             modifier = Modifier
@@ -199,6 +207,24 @@ fun NoteDetailScreen(
             }
         }
     }
+
+    if (exportDialogVisible && note != null) {
+        NoteMarkdownExportDialog(
+            isDark = isDark,
+            languagePreference = languagePreference,
+            onDismiss = { exportDialogVisible = false },
+            onExport = {
+                exportDialogVisible = false
+                val markdown = "# ${note.title}\n\n${note.content.trim()}"
+                val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_SUBJECT, "${note.title}.md")
+                    putExtra(Intent.EXTRA_TEXT, markdown)
+                }
+                context.startActivity(Intent.createChooser(sendIntent, note.title))
+            }
+        )
+    }
 }
 
 @Composable
@@ -208,7 +234,8 @@ private fun NoteDetailTopBar(
     copy: NoteDetailCopy,
     onBack: () -> Unit,
     onToggleEdit: () -> Unit,
-    onOpenChat: () -> Unit
+    onOpenChat: () -> Unit,
+    onExport: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -237,8 +264,85 @@ private fun NoteDetailTopBar(
             IconButton(onClick = onOpenChat) {
                 Icon(Icons.Default.Link, contentDescription = copy.openChat, tint = if (isDark) CognoDarkPrimary else CognoPrimary)
             }
-            IconButton(onClick = { }) {
+            IconButton(onClick = onExport) {
                 Icon(Icons.Default.IosShare, contentDescription = copy.share, tint = if (isDark) CognoDarkPrimary else CognoPrimary)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NoteMarkdownExportDialog(
+    isDark: Boolean,
+    languagePreference: String,
+    onDismiss: () -> Unit,
+    onExport: () -> Unit
+) {
+    val isEnglish = languagePreference == AppLanguagePreference.EN
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(22.dp),
+            shadowElevation = 18.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 30.dp)
+                .border(1.dp, if (isDark) CognoDarkLine else CognoLine, RoundedCornerShape(22.dp))
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Text(
+                    text = if (isEnglish) "Export note" else "导出笔记",
+                    color = if (isDark) CognoDarkText else CognoText,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background((if (isDark) CognoDarkPrimary else CognoPrimary).copy(alpha = 0.12f))
+                        .border(1.dp, if (isDark) CognoDarkPrimary else CognoPrimary, RoundedCornerShape(14.dp))
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        "Markdown (.md)",
+                        color = if (isDark) CognoDarkText else CognoText,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text("✓", color = if (isDark) CognoDarkPrimary else CognoPrimary)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = if (isEnglish) "Cancel" else "取消",
+                        color = if (isDark) CognoDarkText else CognoText,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 12.dp)
+                    )
+                    Text(
+                        text = if (isEnglish) "Share" else "导出",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isDark) CognoDarkPrimary else CognoPrimary)
+                            .clickable(onClick = onExport)
+                            .padding(vertical = 12.dp)
+                    )
+                }
             }
         }
     }

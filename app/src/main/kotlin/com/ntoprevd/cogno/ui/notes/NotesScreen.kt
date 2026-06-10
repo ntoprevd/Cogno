@@ -1,6 +1,7 @@
 package com.ntoprevd.cogno.ui.notes
 
 import android.app.Application
+import android.content.Intent
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -58,6 +59,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -74,7 +76,10 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ntoprevd.cogno.data.db.entity.NoteEntity
+import com.ntoprevd.cogno.data.db.entity.NoteTopicSegmentEntity
+import com.ntoprevd.cogno.data.db.entity.TopicEntity
 import com.ntoprevd.cogno.data.repository.NativeNoteRepository
+import com.ntoprevd.cogno.data.repository.TopicRepository
 import com.ntoprevd.cogno.data.settings.AppLanguagePreference
 import com.ntoprevd.cogno.ui.common.BasicMarkdown
 import com.ntoprevd.cogno.ui.theme.CognoBackground
@@ -96,7 +101,9 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 
 data class NotesUiState(
-    val notes: List<NoteEntity> = emptyList()
+    val notes: List<NoteEntity> = emptyList(),
+    val topics: List<TopicEntity> = emptyList(),
+    val topicSegments: List<NoteTopicSegmentEntity> = emptyList()
 )
 
 private data class TopicSegment(
@@ -118,14 +125,30 @@ private data class TopicGroup(
 
 class NotesViewModel(application: Application) : AndroidViewModel(application) {
     private val repository = NativeNoteRepository(application.applicationContext)
+    private val topicRepository = TopicRepository(application.applicationContext)
 
     private val _uiState = MutableStateFlow(NotesUiState())
     val uiState: StateFlow<NotesUiState> = _uiState.asStateFlow()
 
     init {
         viewModelScope.launch {
+            topicRepository.ensureDefaultTopics()
             repository.observeNotes().collect { notes ->
                 _uiState.update { it.copy(notes = notes) }
+                // 老版本笔记首次进入主题页时只做本地拆段，不调用 AI，也不改写原文。
+                notes.forEach { note ->
+                    topicRepository.syncSegments(note, emptyList(), note.sourceMessageCount)
+                }
+            }
+        }
+        viewModelScope.launch {
+            topicRepository.observeTopics().collect { topics ->
+                _uiState.update { it.copy(topics = topics) }
+            }
+        }
+        viewModelScope.launch {
+            topicRepository.observeSegments().collect { segments ->
+                _uiState.update { it.copy(topicSegments = segments) }
             }
         }
     }
@@ -153,6 +176,21 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
             val note = repository.createNote(title, content)
             onCreated(note.id)
         }
+    }
+
+    fun renameTopic(topicName: String, name: String) {
+        val topic = _uiState.value.topics.firstOrNull { it.name == topicName } ?: return
+        viewModelScope.launch { topicRepository.renameTopic(topic, name, topic.keywords) }
+    }
+
+    fun toggleTopicPinned(topicName: String) {
+        val topic = _uiState.value.topics.firstOrNull { it.name == topicName } ?: return
+        viewModelScope.launch { topicRepository.setPinned(topic, !topic.pinned) }
+    }
+
+    fun deleteTopic(topicName: String) {
+        val topic = _uiState.value.topics.firstOrNull { it.name == topicName } ?: return
+        viewModelScope.launch { topicRepository.deleteTopic(topic) }
     }
 }
 
@@ -290,9 +328,6 @@ fun NotesScreen(
     var selectedTopic by remember { mutableStateOf<TopicGroup?>(null) }
     var topicRenameTarget by remember { mutableStateOf<TopicGroup?>(null) }
     var topicRenameText by remember { mutableStateOf("") }
-    var renamedTopics by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
-    var pinnedTopics by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var hiddenTopics by remember { mutableStateOf<Set<String>>(emptySet()) }
     val visibleNotes = remember(uiState.notes, searchKeyword) {
         val keyword = searchKeyword.trim()
         if (keyword.isBlank()) {
@@ -305,15 +340,16 @@ fun NotesScreen(
             }
         }
     }
-    val topicGroups = remember(uiState.notes, languagePreference) {
-        buildTopicGroups(uiState.notes, languagePreference)
+    val topicGroups = remember(uiState.topicSegments, uiState.notes) {
+        buildPersistedTopicGroups(uiState.topicSegments, uiState.notes)
     }
-    val displayTopicGroups = remember(topicGroups, renamedTopics, pinnedTopics, hiddenTopics) {
+    val displayTopicGroups = remember(topicGroups, uiState.topics) {
+        val activeNames = uiState.topics.map { it.name }.toSet()
+        val pinnedNames = uiState.topics.filter { it.pinned }.map { it.name }.toSet()
         topicGroups
-            .filterNot { it.key in hiddenTopics }
-            .map { group -> group.copy(topic = renamedTopics[group.key] ?: group.topic) }
+            .filter { it.topic in activeNames }
             .sortedWith(
-                compareByDescending<TopicGroup> { it.key in pinnedTopics }
+                compareByDescending<TopicGroup> { it.topic in pinnedNames }
                     .thenByDescending { it.segments.size }
                     .thenByDescending { it.updatedAt }
             )
@@ -390,21 +426,17 @@ fun NotesScreen(
                             group = group,
                             isDark = isDark,
                             copy = copy,
-                            pinned = group.key in pinnedTopics,
+                            pinned = uiState.topics.firstOrNull { it.name == group.topic }?.pinned == true,
                             onClick = { selectedTopic = group },
                             onRename = {
                                 topicRenameTarget = group
                                 topicRenameText = group.topic
                             },
                             onTogglePin = {
-                                pinnedTopics = if (group.key in pinnedTopics) {
-                                    pinnedTopics - group.key
-                                } else {
-                                    pinnedTopics + group.key
-                                }
+                                viewModel.toggleTopicPinned(group.topic)
                             },
                             onDelete = {
-                                hiddenTopics = hiddenTopics + group.key
+                                viewModel.deleteTopic(group.topic)
                                 if (selectedTopic?.key == group.key) selectedTopic = null
                             }
                         )
@@ -486,7 +518,7 @@ fun NotesScreen(
                 onConfirm = {
                     val nextTitle = topicRenameText.trim()
                     if (nextTitle.isNotEmpty()) {
-                        renamedTopics = renamedTopics + (group.key to nextTitle)
+                        viewModel.renameTopic(group.topic, nextTitle)
                     }
                     topicRenameTarget = null
                 }
@@ -815,8 +847,10 @@ private fun TopicDetailView(
     copy: NotesScreenCopy,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     var isEditing by remember(group.key) { mutableStateOf(false) }
     var editContent by remember(group.key) { mutableStateOf(group.toMarkdown(copy)) }
+    var exportDialogVisible by remember(group.key) { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -828,7 +862,8 @@ private fun TopicDetailView(
             copy = copy,
             isEditing = isEditing,
             onBack = onBack,
-            onToggleEdit = { isEditing = !isEditing }
+            onToggleEdit = { isEditing = !isEditing },
+            onExport = { exportDialogVisible = true }
         )
         Column(
             modifier = Modifier
@@ -886,6 +921,22 @@ private fun TopicDetailView(
             }
         }
     }
+    if (exportDialogVisible) {
+        TopicMarkdownExportDialog(
+            isDark = isDark,
+            onDismiss = { exportDialogVisible = false },
+            onExport = {
+                exportDialogVisible = false
+                val markdown = "# ${group.topic}\n\n${group.toMarkdown(copy)}"
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "text/plain"
+                    putExtra(Intent.EXTRA_SUBJECT, "${group.topic}.md")
+                    putExtra(Intent.EXTRA_TEXT, markdown)
+                }
+                context.startActivity(Intent.createChooser(intent, group.topic))
+            }
+        )
+    }
 }
 
 @Composable
@@ -894,7 +945,8 @@ private fun TopicDetailTopBar(
     copy: NotesScreenCopy,
     isEditing: Boolean,
     onBack: () -> Unit,
-    onToggleEdit: () -> Unit
+    onToggleEdit: () -> Unit,
+    onExport: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -920,12 +972,78 @@ private fun TopicDetailTopBar(
                     tint = if (isDark) CognoDarkPrimary else CognoPrimary
                 )
             }
-            IconButton(onClick = { }) {
+            IconButton(onClick = onExport) {
                 Icon(
                     imageVector = Icons.Default.IosShare,
                     contentDescription = copy.share,
                     tint = if (isDark) CognoDarkPrimary else CognoPrimary
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TopicMarkdownExportDialog(
+    isDark: Boolean,
+    onDismiss: () -> Unit,
+    onExport: () -> Unit
+) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(22.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 30.dp)
+                .border(1.dp, if (isDark) CognoDarkLine else CognoLine, RoundedCornerShape(22.dp))
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Text(
+                    "导出主题笔记",
+                    color = if (isDark) CognoDarkText else CognoText,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Text(
+                    "Markdown (.md)  ✓",
+                    color = if (isDark) CognoDarkPrimary else CognoPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background((if (isDark) CognoDarkPrimary else CognoPrimary).copy(alpha = 0.12f))
+                        .padding(14.dp)
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        "取消",
+                        color = if (isDark) CognoDarkText else CognoText,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 12.dp)
+                    )
+                    Text(
+                        "导出",
+                        color = Color.White,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isDark) CognoDarkPrimary else CognoPrimary)
+                            .clickable(onClick = onExport)
+                            .padding(vertical = 12.dp)
+                    )
+                }
             }
         }
     }
@@ -1010,6 +1128,39 @@ private fun TopicGroup.toMarkdown(copy: NotesScreenCopy): String {
 
 private fun formatNoteTime(timestamp: Long, copy: NotesScreenCopy): String {
     return SimpleDateFormat(copy.timePattern, copy.timeLocale).format(Date(timestamp))
+}
+
+private fun buildPersistedTopicGroups(
+    segments: List<NoteTopicSegmentEntity>,
+    notes: List<NoteEntity>
+): List<TopicGroup> {
+    val notesById = notes.associateBy { it.id }
+    return segments
+        .mapNotNull { segment ->
+            val note = notesById[segment.noteId] ?: return@mapNotNull null
+            TopicSegment(
+                topic = segment.topicName,
+                text = buildString {
+                    if (segment.heading.isNotBlank()) {
+                        append("## ")
+                        append(segment.heading)
+                        append("\n\n")
+                    }
+                    append(segment.content)
+                },
+                sourceNoteId = note.id,
+                sourceTitle = note.title,
+                updatedAt = segment.createdAt
+            )
+        }
+        .groupBy { it.topic }
+        .map { (topic, topicSegments) ->
+            TopicGroup(
+                topic = topic,
+                segments = topicSegments.sortedByDescending { it.updatedAt },
+                updatedAt = topicSegments.maxOfOrNull { it.updatedAt } ?: 0L
+            )
+        }
 }
 
 private fun buildTopicGroups(notes: List<NoteEntity>, languagePreference: String): List<TopicGroup> {

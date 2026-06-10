@@ -62,4 +62,18 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE id = :id")
     suspend fun deleteMessageById(id: String)
+
+    @Query(
+        "SELECT COALESCE(SUM(token_count), 0) FROM messages " +
+            "WHERE role = 'assistant' AND status = 'completed' " +
+            "AND created_at >= :monthStart AND token_count IS NOT NULL"
+    )
+    fun observeRecordedTokensSince(monthStart: Long): Flow<Long>
+
+    @Query(
+        "SELECT COUNT(*) FROM messages " +
+            "WHERE role = 'assistant' AND status = 'completed' " +
+            "AND created_at >= :monthStart AND token_count IS NOT NULL"
+    )
+    fun observeRecordedRequestsSince(monthStart: Long): Flow<Int>
 }

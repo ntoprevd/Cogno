@@ -10,17 +10,22 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import com.ntoprevd.cogno.data.db.dao.MessageDao
 import com.ntoprevd.cogno.data.db.dao.NoteDao
 import com.ntoprevd.cogno.data.db.dao.SessionDao
+import com.ntoprevd.cogno.data.db.dao.TopicDao
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
+import com.ntoprevd.cogno.data.db.entity.NoteTopicSegmentEntity
 import com.ntoprevd.cogno.data.db.entity.NoteEntity
 import com.ntoprevd.cogno.data.db.entity.SessionEntity
+import com.ntoprevd.cogno.data.db.entity.TopicEntity
 
 @Database(
     entities = [
         SessionEntity::class,
         MessageEntity::class,
-        NoteEntity::class
+        NoteEntity::class,
+        TopicEntity::class,
+        NoteTopicSegmentEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -30,6 +35,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
 
     abstract fun noteDao(): NoteDao
+
+    abstract fun topicDao(): TopicDao
 
     companion object {
         private const val DATABASE_NAME = "cogno.db"
@@ -44,7 +51,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { instance = it }
             }
@@ -75,6 +82,37 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_notes_source_session_id ON notes(source_session_id)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_notes_pinned_updated_at ON notes(pinned, updated_at)")
+            }
+        }
+
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 主题只保存分类规则；笔记正文仍是按对话生成的唯一底稿。
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS topics (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "name TEXT NOT NULL, " +
+                        "keywords TEXT NOT NULL, " +
+                        "is_builtin INTEGER NOT NULL, " +
+                        "enabled INTEGER NOT NULL, " +
+                        "pinned INTEGER NOT NULL, " +
+                        "created_at INTEGER NOT NULL, " +
+                        "updated_at INTEGER NOT NULL)"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS note_topic_segments (" +
+                        "id TEXT NOT NULL PRIMARY KEY, " +
+                        "note_id TEXT NOT NULL, " +
+                        "topic_name TEXT NOT NULL, " +
+                        "heading TEXT NOT NULL, " +
+                        "content TEXT NOT NULL, " +
+                        "position INTEGER NOT NULL, " +
+                        "source_message_count INTEGER NOT NULL, " +
+                        "created_at INTEGER NOT NULL, " +
+                        "FOREIGN KEY(note_id) REFERENCES notes(id) ON UPDATE NO ACTION ON DELETE CASCADE)"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_note_topic_segments_note_id ON note_topic_segments(note_id)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_note_topic_segments_topic_name_created_at ON note_topic_segments(topic_name, created_at)")
             }
         }
     }

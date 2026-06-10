@@ -32,9 +32,30 @@ class AppSettingsStore(context: Context) {
             .apply()
     }
 
+    fun loadUserName(): String =
+        preferences.getString(KEY_USER_NAME, null)?.trim().orEmpty().ifBlank { DEFAULT_USER_NAME }
+
+    fun saveUserName(value: String) {
+        preferences.edit()
+            .putString(KEY_USER_NAME, value.trim().ifBlank { DEFAULT_USER_NAME })
+            .apply()
+    }
+
+    fun loadAvatarUri(): String =
+        preferences.getString(KEY_AVATAR_URI, null).orEmpty()
+
+    fun saveAvatarUri(value: String) {
+        preferences.edit()
+            .putString(KEY_AVATAR_URI, value)
+            .apply()
+    }
+
     companion object {
         private const val PREFERENCES_NAME = "cogno_app_settings"
         private const val KEY_DARK_MODE = "dark_mode"
         private const val KEY_LANGUAGE = "language"
+        private const val KEY_USER_NAME = "user_name"
+        private const val KEY_AVATAR_URI = "avatar_uri"
+        const val DEFAULT_USER_NAME = "Cogno User"
     }
 }

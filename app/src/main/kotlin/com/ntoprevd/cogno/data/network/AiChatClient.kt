@@ -1,7 +1,11 @@
 package com.ntoprevd.cogno.data.network
 
+import android.content.Context
+import android.provider.Settings
+import com.ntoprevd.cogno.BuildConfig
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
 import com.ntoprevd.cogno.data.settings.AiSettings
+import com.ntoprevd.cogno.data.settings.AiSourceMode
 import com.ntoprevd.cogno.data.settings.ResponseStylePreference
 import java.io.IOException
 import java.util.concurrent.TimeUnit
@@ -14,7 +18,12 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
-class AiChatClient {
+class AiChatClient(context: Context) {
+    private val appContext = context.applicationContext
+    private val deviceId = Settings.Secure.getString(
+        appContext.contentResolver,
+        Settings.Secure.ANDROID_ID
+    ).orEmpty()
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS)
@@ -25,14 +34,8 @@ class AiChatClient {
         settings: AiSettings,
         messages: List<MessageEntity>
     ): AiChatResponse = withContext(Dispatchers.IO) {
-        if (!settings.hasApiKey) {
-            throw AiChatException("请先在设置页填写 API Key")
-        }
-
-        val request = Request.Builder()
-            .url("${settings.apiBaseUrl.trimEnd('/')}/chat/completions")
-            .addHeader("Authorization", "Bearer ${settings.apiKey}")
-            .addHeader("Content-Type", JSON_MEDIA_TYPE.toString())
+        validateSettings(settings)
+        val request = authorizedRequest(settings, "chat/completions")
             .post(buildRequestBody(settings, messages).toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
@@ -68,14 +71,8 @@ class AiChatClient {
         messages: List<MessageEntity>,
         onContentDelta: suspend (String) -> Unit
     ): AiChatResponse = withContext(Dispatchers.IO) {
-        if (!settings.hasApiKey) {
-            throw AiChatException("请先在设置页填写 API Key")
-        }
-
-        val request = Request.Builder()
-            .url("${settings.apiBaseUrl.trimEnd('/')}/chat/completions")
-            .addHeader("Authorization", "Bearer ${settings.apiKey}")
-            .addHeader("Content-Type", JSON_MEDIA_TYPE.toString())
+        validateSettings(settings)
+        val request = authorizedRequest(settings, "chat/completions")
             .post(buildRequestBody(settings, messages, stream = true).toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
@@ -126,14 +123,8 @@ class AiChatClient {
     }
 
     suspend fun testConnection(settings: AiSettings): String = withContext(Dispatchers.IO) {
-        if (!settings.hasApiKey) {
-            throw AiChatException("请先填写 API Key")
-        }
-
-        val request = Request.Builder()
-            .url("${settings.apiBaseUrl.trimEnd('/')}/chat/completions")
-            .addHeader("Authorization", "Bearer ${settings.apiKey}")
-            .addHeader("Content-Type", JSON_MEDIA_TYPE.toString())
+        validateSettings(settings)
+        val request = authorizedRequest(settings, "chat/completions")
             .post(buildTestRequestBody(settings).toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
@@ -151,23 +142,19 @@ class AiChatClient {
         conversationTitle: String,
         conversationText: String,
         style: String,
-        existingContent: String? = null
+        existingContent: String? = null,
+        topicNames: List<String> = emptyList()
     ): AiNoteDraft = withContext(Dispatchers.IO) {
-        if (!settings.hasApiKey) {
-            throw AiChatException("请先在设置页填写 API Key")
-        }
-
-        val request = Request.Builder()
-            .url("${settings.apiBaseUrl.trimEnd('/')}/chat/completions")
-            .addHeader("Authorization", "Bearer ${settings.apiKey}")
-            .addHeader("Content-Type", JSON_MEDIA_TYPE.toString())
+        validateSettings(settings)
+        val request = authorizedRequest(settings, "chat/completions")
             .post(
                 buildNoteRequestBody(
                     settings = settings,
                     conversationTitle = conversationTitle,
                     conversationText = conversationText,
                     style = style,
-                    existingContent = existingContent
+                    existingContent = existingContent,
+                    topicNames = topicNames
                 ).toString().toRequestBody(JSON_MEDIA_TYPE)
             )
             .build()
@@ -192,6 +179,40 @@ class AiChatClient {
                 throw AiChatException("AI 没有生成笔记内容")
             }
             parseNoteDraft(content, conversationTitle)
+        }
+    }
+
+    suspend fun fetchExperienceModels(): List<ExperienceModel> = withContext(Dispatchers.IO) {
+        if (BuildConfig.EXPERIENCE_API_BASE_URL.isBlank()) return@withContext emptyList()
+        val request = Request.Builder()
+            .url("${BuildConfig.EXPERIENCE_API_BASE_URL.trimEnd('/')}/models")
+            .addHeader("Content-Type", JSON_MEDIA_TYPE.toString())
+            .addHeader("X-Cogno-Device-Id", deviceId)
+            .apply {
+                if (BuildConfig.EXPERIENCE_APP_TOKEN.isNotBlank()) {
+                    addHeader("Authorization", "Bearer ${BuildConfig.EXPERIENCE_APP_TOKEN}")
+                }
+            }
+            .get()
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return@withContext emptyList()
+            val data = JSONObject(response.body?.string().orEmpty()).optJSONArray("data")
+                ?: return@withContext emptyList()
+            buildList {
+                for (index in 0 until data.length()) {
+                    val item = data.optJSONObject(index) ?: continue
+                    val id = item.optString("id").trim()
+                    if (id.isBlank()) continue
+                    add(
+                        ExperienceModel(
+                            id = id,
+                            label = item.optString("label", id),
+                            description = item.optString("description")
+                        )
+                    )
+                }
+            }
         }
     }
 
@@ -225,6 +246,12 @@ class AiChatClient {
             .put("messages", requestMessages)
             .put("stream", stream)
             .put("temperature", settings.temperature)
+            .apply {
+                // OpenAI-compatible 流式接口需要显式请求，才会在结束块返回 usage 汇总。
+                if (stream) {
+                    put("stream_options", JSONObject().put("include_usage", true))
+                }
+            }
     }
 
     private fun parseErrorMessage(bodyText: String, code: Int): String {
@@ -235,6 +262,33 @@ class AiChatClient {
                 ?.takeIf { it.isNotBlank() }
         }.getOrNull()
         return apiMessage ?: "AI 请求失败，HTTP $code"
+    }
+
+    private fun validateSettings(settings: AiSettings) {
+        if (settings.sourceMode == AiSourceMode.EXPERIENCE) {
+            if (BuildConfig.EXPERIENCE_API_BASE_URL.isBlank()) {
+                throw AiChatException("体验模型后端地址尚未配置")
+            }
+        } else if (!settings.hasApiKey) {
+            throw AiChatException("请先在设置页填写 API Key")
+        }
+    }
+
+    private fun authorizedRequest(settings: AiSettings, path: String): Request.Builder {
+        val experienceMode = settings.sourceMode == AiSourceMode.EXPERIENCE
+        val baseUrl = if (experienceMode) {
+            BuildConfig.EXPERIENCE_API_BASE_URL
+        } else {
+            settings.apiBaseUrl
+        }
+        val token = if (experienceMode) BuildConfig.EXPERIENCE_APP_TOKEN else settings.apiKey
+        return Request.Builder()
+            .url("${baseUrl.trimEnd('/')}/$path")
+            .addHeader("Content-Type", JSON_MEDIA_TYPE.toString())
+            .addHeader("X-Cogno-Device-Id", deviceId)
+            .apply {
+                if (token.isNotBlank()) addHeader("Authorization", "Bearer $token")
+            }
     }
 
     private fun buildTestRequestBody(settings: AiSettings): JSONObject {
@@ -259,7 +313,8 @@ class AiChatClient {
         conversationTitle: String,
         conversationText: String,
         style: String,
-        existingContent: String?
+        existingContent: String?,
+        topicNames: List<String>
     ): JSONObject {
         val systemPrompt = """
             你是 Cogno 的结构化笔记助手。请把用户和 AI 的对话整理成一篇清晰、可复习的中文 Markdown 笔记。
@@ -282,6 +337,13 @@ class AiChatClient {
             }
             append("对话内容：\n")
             append(conversationText)
+            append("\n\n可用主题：")
+            append(topicNames.joinToString().ifBlank { "综合知识" })
+            append(
+                "\n请在 title、content 字段之外返回 segments 数组。" +
+                    "每项格式为 {\"topic\":\"主题\",\"heading\":\"段落标题\",\"content\":\"最小内容单元 Markdown\"}。" +
+                    "更新已有笔记时，segments 只返回本次新增内容的单元，不要重复旧单元。"
+            )
         }
 
         return JSONObject()
@@ -317,16 +379,34 @@ class AiChatClient {
         val parsed = runCatching { JSONObject(cleaned) }.getOrNull()
         val title = parsed?.optString("title")?.trim().orEmpty()
         val content = parsed?.optString("content")?.trim().orEmpty()
+        val segments = parsed?.optJSONArray("segments")?.let { array ->
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val segmentContent = item.optString("content").trim()
+                    if (segmentContent.isBlank()) continue
+                    add(
+                        AiNoteSegment(
+                            topic = item.optString("topic").trim(),
+                            heading = item.optString("heading").trim(),
+                            content = segmentContent
+                        )
+                    )
+                }
+            }
+        }.orEmpty()
         if (content.isNotBlank()) {
             return AiNoteDraft(
                 title = title.ifBlank { fallbackTitle.ifBlank { "会话笔记" } },
-                content = content
+                content = content,
+                segments = segments
             )
         }
 
         return AiNoteDraft(
             title = fallbackTitle.ifBlank { "会话笔记" },
-            content = rawContent
+            content = rawContent,
+            segments = segments
         )
     }
 
@@ -344,7 +424,20 @@ data class AiChatResponse(
 
 data class AiNoteDraft(
     val title: String,
+    val content: String,
+    val segments: List<AiNoteSegment> = emptyList()
+)
+
+data class AiNoteSegment(
+    val topic: String,
+    val heading: String,
     val content: String
+)
+
+data class ExperienceModel(
+    val id: String,
+    val label: String,
+    val description: String
 )
 
 class AiChatException(message: String, cause: Throwable? = null) : IOException(message, cause)

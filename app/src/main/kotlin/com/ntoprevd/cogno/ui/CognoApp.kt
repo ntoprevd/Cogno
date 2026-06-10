@@ -21,13 +21,17 @@ import com.ntoprevd.cogno.data.settings.AiSettingsStore
 import com.ntoprevd.cogno.ui.chat.ChatScreen
 import com.ntoprevd.cogno.ui.notes.NoteDetailScreen
 import com.ntoprevd.cogno.ui.notes.NotesScreen
+import com.ntoprevd.cogno.ui.settings.ProfileSettingsScreen
 import com.ntoprevd.cogno.ui.settings.SettingsScreen
+import com.ntoprevd.cogno.ui.settings.TopicSettingsScreen
 import com.ntoprevd.cogno.ui.theme.CognoTheme
 
 object CognoRoutes {
     const val CHAT = "chat"
     const val NOTES = "notes"
     const val SETTINGS = "settings"
+    const val PROFILE_SETTINGS = "profileSettings"
+    const val TOPIC_SETTINGS = "topicSettings"
     const val NOTE_DETAIL = "noteDetail/{noteId}"
 
     fun noteDetail(noteId: String): String = "noteDetail/$noteId"
@@ -41,6 +45,8 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
     var darkModePreference by remember { mutableStateOf(appSettingsStore.loadDarkModePreference()) }
     var languagePreference by remember { mutableStateOf(appSettingsStore.loadLanguagePreference()) }
     var currentModelId by remember { mutableStateOf(aiSettingsStore.load().modelId) }
+    var userName by remember { mutableStateOf(appSettingsStore.loadUserName()) }
+    var avatarUri by remember { mutableStateOf(appSettingsStore.loadAvatarUri()) }
     var pendingChatSessionId by remember { mutableStateOf<String?>(null) }
 
     CognoTheme(
@@ -63,6 +69,8 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
                 ChatScreen(
                     currentModelId = currentModelId,
                     languagePreference = languagePreference,
+                    userName = userName,
+                    avatarUri = avatarUri,
                     onOpenNotes = { navController.navigate(CognoRoutes.NOTES) },
                     onOpenSettings = { navController.navigate(CognoRoutes.SETTINGS) },
                     initialSessionId = pendingChatSessionId,
@@ -95,6 +103,10 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
             }
             composable(route = CognoRoutes.SETTINGS) {
                 SettingsScreen(
+                    userName = userName,
+                    avatarUri = avatarUri,
+                    onOpenProfile = { navController.navigate(CognoRoutes.PROFILE_SETTINGS) },
+                    onOpenTopics = { navController.navigate(CognoRoutes.TOPIC_SETTINGS) },
                     darkModePreference = darkModePreference,
                     onDarkModePreferenceChange = { value ->
                         appSettingsStore.saveDarkModePreference(value)
@@ -106,6 +118,24 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
                         languagePreference = value
                     },
                     onAiSettingsChanged = { currentModelId = aiSettingsStore.load().modelId },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(route = CognoRoutes.PROFILE_SETTINGS) {
+                ProfileSettingsScreen(
+                    languagePreference = languagePreference,
+                    initialUserName = userName,
+                    initialAvatarUri = avatarUri,
+                    onSaved = { nextName, nextAvatarUri ->
+                        userName = nextName
+                        avatarUri = nextAvatarUri
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(route = CognoRoutes.TOPIC_SETTINGS) {
+                TopicSettingsScreen(
+                    languagePreference = languagePreference,
                     onBack = { navController.popBackStack() }
                 )
             }

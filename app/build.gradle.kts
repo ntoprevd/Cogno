@@ -1,8 +1,18 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.ksp)
     alias(libs.plugins.compose.compiler)
 }
+
+val localProperties = Properties().apply {
+    val file = rootProject.file("local.properties")
+    if (file.exists()) file.inputStream().use(::load)
+}
+
+fun quotedBuildConfig(value: String): String =
+    "\"${value.replace("\\", "\\\\").replace("\"", "\\\"")}\""
 
 android {
     namespace = "com.ntoprevd.cogno"
@@ -21,6 +31,16 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["usesCleartextTraffic"] = false
+        buildConfigField(
+            "String",
+            "EXPERIENCE_API_BASE_URL",
+            quotedBuildConfig(localProperties.getProperty("COGNO_EXPERIENCE_BASE_URL", ""))
+        )
+        buildConfigField(
+            "String",
+            "EXPERIENCE_APP_TOKEN",
+            quotedBuildConfig(localProperties.getProperty("COGNO_EXPERIENCE_APP_TOKEN", ""))
+        )
     }
 
     buildFeatures {

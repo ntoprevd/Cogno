@@ -10,6 +10,12 @@ class AiSettingsStore(context: Context) {
 
     fun load(): AiSettings {
         return AiSettings(
+            sourceMode = preferences.getString(KEY_SOURCE_MODE, null)
+                ?.takeIf { it in AiSourceMode.all }
+                ?: AiSourceMode.CUSTOM,
+            customProvider = preferences.getString(KEY_CUSTOM_PROVIDER, null)
+                ?.takeIf { it in CustomAiProvider.all }
+                ?: CustomAiProvider.DEEPSEEK,
             apiBaseUrl = preferences.getString(KEY_API_BASE_URL, null)
                 ?: AiSettings.DEFAULT_API_BASE_URL,
             modelId = preferences.getString(KEY_MODEL_ID, null)
@@ -38,9 +44,14 @@ class AiSettingsStore(context: Context) {
             .takeIf { it in ResponseStylePreference.all }
             ?: ResponseStylePreference.BALANCED
         val temperature = settings.temperature.coerceIn(MIN_TEMPERATURE, MAX_TEMPERATURE)
+        val sourceMode = settings.sourceMode.takeIf { it in AiSourceMode.all } ?: AiSourceMode.CUSTOM
+        val customProvider = settings.customProvider.takeIf { it in CustomAiProvider.all }
+            ?: CustomAiProvider.DEEPSEEK
 
         // API Key 只保存在本机 SharedPreferences，不写入仓库或构建配置。
         preferences.edit()
+            .putString(KEY_SOURCE_MODE, sourceMode)
+            .putString(KEY_CUSTOM_PROVIDER, customProvider)
             .putString(KEY_API_BASE_URL, apiBaseUrl)
             .putString(KEY_MODEL_ID, modelId)
             .putString(KEY_API_KEY, settings.apiKey.trim())
@@ -53,6 +64,8 @@ class AiSettingsStore(context: Context) {
     companion object {
         private const val PREFERENCES_NAME = "cogno_ai_settings"
         private const val KEY_API_BASE_URL = "api_base_url"
+        private const val KEY_SOURCE_MODE = "source_mode"
+        private const val KEY_CUSTOM_PROVIDER = "custom_provider"
         private const val KEY_MODEL_ID = "model_id"
         private const val KEY_API_KEY = "api_key"
         private const val KEY_SYSTEM_PROMPT = "system_prompt"

@@ -39,6 +39,8 @@ out/
 # 本地配置文件（包含 SDK 路径等敏感信息）
 local.properties
 keystore.properties
+.env
+server/.env
 
 # NDK 和外部构建工具
 .externalNativeBuild
