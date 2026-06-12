@@ -25,6 +25,14 @@ interface MessageDao {
     )
     suspend fun getMessagesBySessionId(sessionId: String, limit: Int, offset: Int): List<MessageEntity>
 
+    @Query(
+        "SELECT * FROM (" +
+            "SELECT * FROM messages WHERE session_id = :sessionId " +
+            "ORDER BY created_at DESC LIMIT :limit" +
+            ") ORDER BY created_at ASC"
+    )
+    suspend fun getRecentMessagesBySessionId(sessionId: String, limit: Int): List<MessageEntity>
+
     @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
     suspend fun getMessageById(id: String): MessageEntity?
 
@@ -34,6 +42,19 @@ interface MessageDao {
             "ORDER BY created_at ASC"
     )
     suspend fun getMessagesBefore(sessionId: String, createdBefore: Long): List<MessageEntity>
+
+    @Query(
+        "SELECT * FROM (" +
+            "SELECT * FROM messages " +
+            "WHERE session_id = :sessionId AND created_at < :createdBefore " +
+            "ORDER BY created_at DESC LIMIT :limit" +
+            ") ORDER BY created_at ASC"
+    )
+    suspend fun getRecentMessagesBefore(
+        sessionId: String,
+        createdBefore: Long,
+        limit: Int
+    ): List<MessageEntity>
 
     @Query(
         "SELECT * FROM messages " +
@@ -62,6 +83,12 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE id = :id")
     suspend fun deleteMessageById(id: String)
+
+    @Query(
+        "DELETE FROM messages " +
+            "WHERE session_id = :sessionId AND created_at > :createdAfter"
+    )
+    suspend fun deleteMessagesAfter(sessionId: String, createdAfter: Long)
 
     @Query(
         "SELECT COALESCE(SUM(token_count), 0) FROM messages " +

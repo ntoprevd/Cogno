@@ -89,6 +89,43 @@ class AppDatabaseInstrumentedTest {
         assertEquals(0, messageDao.getMessagesBySessionId("session-delete", 20, 0).size)
     }
 
+    @Test
+    fun recentMessages_returnsLatestWindowInChronologicalOrder() = runBlocking {
+        sessionDao.insertSession(session("session-recent", "Recent", false, 100L))
+        messageDao.insertMessages(
+            (1..5).map { index ->
+                message(
+                    id = "message-$index",
+                    sessionId = "session-recent",
+                    role = if (index % 2 == 0) "assistant" else "user",
+                    content = "Message $index",
+                    createdAt = index * 100L
+                )
+            }
+        )
+
+        val recent = messageDao.getRecentMessagesBySessionId("session-recent", 3)
+
+        assertEquals(listOf("message-3", "message-4", "message-5"), recent.map { it.id })
+    }
+
+    @Test
+    fun deleteMessagesAfter_trimsStaleConversationBranch() = runBlocking {
+        sessionDao.insertSession(session("session-branch", "Branch", false, 100L))
+        messageDao.insertMessages(
+            listOf(
+                message("message-1", "session-branch", "user", "First", 100L),
+                message("message-2", "session-branch", "assistant", "Second", 200L),
+                message("message-3", "session-branch", "user", "Stale", 300L)
+            )
+        )
+
+        messageDao.deleteMessagesAfter("session-branch", 200L)
+
+        val remaining = messageDao.getMessagesBySessionId("session-branch", 20, 0)
+        assertEquals(listOf("message-1", "message-2"), remaining.map { it.id })
+    }
+
     private fun session(id: String, title: String, pinned: Boolean, updatedAt: Long): SessionEntity {
         return SessionEntity(
             id,
@@ -115,6 +152,8 @@ class AppDatabaseInstrumentedTest {
             role,
             content,
             "completed",
+            null,
+            null,
             null,
             null,
             null,

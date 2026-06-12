@@ -1,8 +1,12 @@
 package com.ntoprevd.cogno.ui.chat
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.content.Intent
+import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.speech.SpeechRecognizer
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import java.text.SimpleDateFormat
@@ -23,12 +27,15 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -85,11 +92,14 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -98,14 +108,18 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -116,6 +130,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.ntoprevd.cogno.R
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
@@ -140,10 +155,24 @@ import com.ntoprevd.cogno.ui.theme.isCognoDarkTheme
 import com.ntoprevd.cogno.ui.settings.UserAvatar
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 private const val FEEDBACK_LIKE = "like"
 private const val FEEDBACK_DISLIKE = "dislike"
+
+private enum class VoiceInputPhase {
+    IDLE,
+    LISTENING,
+    PROCESSING,
+    MESSAGE
+}
+
+private data class VoiceInputState(
+    val phase: VoiceInputPhase = VoiceInputPhase.IDLE,
+    val detail: String = ""
+)
 
 private data class PendingAttachment(
     val uri: Uri,
@@ -184,8 +213,18 @@ private data class ChatScreenCopy(
     val inputPlaceholder: String,
     val voiceInput: String,
     val listening: String,
-    val voiceComingSoon: String,
+    val voiceReleaseToFinish: String,
+    val voiceReleaseToCancel: String,
+    val voiceProcessing: String,
+    val voiceProcessingTimeout: String,
+    val voicePermissionDenied: String,
+    val voicePermissionGranted: String,
+    val voiceCancelled: String,
+    val voiceNoMatch: String,
+    val voiceUnavailable: String,
+    val voiceFailed: String,
     val send: String,
+    val stopGenerating: String,
     val today: String,
     val emptySessions: String,
     val noSessionFound: String,
@@ -235,12 +274,22 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
             camera = "Camera",
             photos = "Photos",
             files = "Files",
-            attachmentPending = "Selected · multimodal sending is not connected yet",
+            attachmentPending = "Image selected · ready to send",
             inputPlaceholder = "Type a message...",
             voiceInput = "Voice input",
             listening = "Listening...",
-            voiceComingSoon = "Release to finish · speech recognition is coming soon",
+            voiceReleaseToFinish = "Release to finish · slide away to cancel",
+            voiceReleaseToCancel = "Release to cancel",
+            voiceProcessing = "Recognizing speech...",
+            voiceProcessingTimeout = "Recognition timed out. Please try again.",
+            voicePermissionDenied = "Microphone permission denied",
+            voicePermissionGranted = "Permission granted · hold again to speak",
+            voiceCancelled = "Voice input cancelled",
+            voiceNoMatch = "No speech recognized. Please try again.",
+            voiceUnavailable = "No compatible speech recognition engine is available",
+            voiceFailed = "Speech recognition failed. Please try again.",
             send = "Send",
+            stopGenerating = "Stop generating",
             today = "Today",
             emptySessions = "No chat history",
             noSessionFound = "No matching chats",
@@ -293,12 +342,22 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
             camera = "拍照",
             photos = "相册",
             files = "文件",
-            attachmentPending = "已选择 · 多模态发送暂未接入",
+            attachmentPending = "图片已选择 · 可以发送",
             inputPlaceholder = "输入消息...",
             voiceInput = "语音输入",
             listening = "正在聆听...",
-            voiceComingSoon = "松开结束 · 语音识别即将开放",
+            voiceReleaseToFinish = "松开结束 · 滑开取消",
+            voiceReleaseToCancel = "松开取消",
+            voiceProcessing = "正在识别语音...",
+            voiceProcessingTimeout = "识别超时，请重试",
+            voicePermissionDenied = "麦克风权限被拒绝",
+            voicePermissionGranted = "权限已开启，请再次长按说话",
+            voiceCancelled = "已取消语音输入",
+            voiceNoMatch = "没有识别到语音，请重试",
+            voiceUnavailable = "当前系统语音引擎不兼容，请安装标准语音识别服务",
+            voiceFailed = "语音识别失败，请重试",
             send = "发送",
+            stopGenerating = "停止生成",
             today = "今天",
             emptySessions = "暂无历史会话",
             noSessionFound = "没有找到相关会话",
@@ -463,8 +522,16 @@ fun ChatScreen(
                 isDark = isDark,
                 isSending = uiState.isSending,
                 attachment = pendingAttachment,
+                languagePreference = languagePreference,
                 onTextChange = viewModel::onInputChange,
-                onSend = { viewModel.sendMessage(languagePreference) },
+                onSend = {
+                    viewModel.sendMessage(
+                        languagePreference,
+                        pendingAttachment?.takeIf { it.isImage }?.uri
+                    )
+                    pendingAttachment = null
+                },
+                onStopGenerating = viewModel::stopGenerating,
                 onAddAttachment = { attachmentMenuVisible = true },
                 onRemoveAttachment = { pendingAttachment = null },
                 copy = copy
@@ -1070,13 +1137,30 @@ private fun MessageBubble(
                             }
                         )
                 ) {
-                    Text(
-                        text = displayText,
-                        color = textColor,
-                        fontSize = 16.sp,
-                        lineHeight = 24.sp,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-                    )
+                    Column(modifier = Modifier.padding(6.dp)) {
+                        message.imagePath?.let { imagePath ->
+                            ChatMessageImage(
+                                imagePath = imagePath,
+                                modifier = Modifier
+                                    .widthIn(max = 298.dp)
+                                    .height(210.dp)
+                            )
+                        }
+                        if (message.content.isNotBlank()) {
+                            Text(
+                                text = message.content,
+                                color = textColor,
+                                fontSize = 16.sp,
+                                lineHeight = 24.sp,
+                                modifier = Modifier.padding(
+                                    start = 10.dp,
+                                    end = 10.dp,
+                                    top = if (message.imagePath == null) 6.dp else 8.dp,
+                                    bottom = 6.dp
+                                )
+                            )
+                        }
+                    }
                 }
             }
         } else {
@@ -1124,6 +1208,27 @@ private fun MessageBubble(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun ChatMessageImage(
+    imagePath: String,
+    modifier: Modifier = Modifier
+) {
+    val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, imagePath) {
+        value = withContext(Dispatchers.IO) {
+            BitmapFactory.decodeFile(imagePath)
+        }
+    }
+
+    bitmap?.let { loadedBitmap ->
+        Image(
+            bitmap = loadedBitmap.asImageBitmap(),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = modifier.clip(RoundedCornerShape(15.dp))
+        )
     }
 }
 
@@ -1316,13 +1421,161 @@ private fun ChatInputBar(
     isDark: Boolean,
     isSending: Boolean,
     attachment: PendingAttachment?,
+    languagePreference: String,
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
+    onStopGenerating: () -> Unit,
     onAddAttachment: () -> Unit,
     onRemoveAttachment: () -> Unit,
     copy: ChatScreenCopy
 ) {
-    var isListening by remember { mutableStateOf(false) }
+    val context = LocalContext.current
+    val voiceCancelDistancePx = with(LocalDensity.current) { 72.dp.toPx() }
+    val latestText by rememberUpdatedState(text)
+    val latestOnTextChange by rememberUpdatedState(onTextChange)
+    var inputValue by remember {
+        mutableStateOf(TextFieldValue(text = text, selection = TextRange(text.length)))
+    }
+    var voiceState by remember { mutableStateOf(VoiceInputState()) }
+    var cancellationRequested by remember { mutableStateOf(false) }
+    var latestPartialResult by remember { mutableStateOf("") }
+    val speechRecognizer = remember(context, copy) {
+        if (
+            !SpeechRecognizer.isRecognitionAvailable(context) ||
+            !hasUsableRecognitionService(context)
+        ) {
+            null
+        } else {
+            runCatching {
+                AndroidSpeechRecognizer(
+                    context = context,
+                    listener = object : AndroidSpeechRecognizer.Listener {
+                    override fun onReady() {
+                        voiceState = VoiceInputState(
+                            phase = VoiceInputPhase.LISTENING,
+                            detail = copy.voiceReleaseToFinish
+                        )
+                    }
+
+                    override fun onSpeechStarted() {
+                        voiceState = VoiceInputState(
+                            phase = VoiceInputPhase.LISTENING,
+                            detail = copy.voiceReleaseToFinish
+                        )
+                    }
+
+                    override fun onProcessing() {
+                        voiceState = VoiceInputState(
+                            phase = VoiceInputPhase.PROCESSING,
+                            detail = copy.voiceProcessing
+                        )
+                    }
+
+                    override fun onPartialResult(text: String) {
+                        if (text.isNotBlank()) {
+                            latestPartialResult = text
+                            if (voiceState.phase != VoiceInputPhase.PROCESSING) {
+                                voiceState = VoiceInputState(
+                                    phase = VoiceInputPhase.LISTENING,
+                                    detail = text
+                                )
+                            }
+                        }
+                    }
+
+                    override fun onResult(text: String) {
+                        cancellationRequested = false
+                        latestPartialResult = ""
+                        if (text.isBlank()) {
+                            voiceState = VoiceInputState(
+                                phase = VoiceInputPhase.MESSAGE,
+                                detail = copy.voiceNoMatch
+                            )
+                        } else {
+                            latestOnTextChange(appendRecognizedText(latestText, text))
+                            voiceState = VoiceInputState()
+                        }
+                    }
+
+                    override fun onError(error: Int) {
+                        if (cancellationRequested) {
+                            cancellationRequested = false
+                            return
+                        }
+                        latestPartialResult = ""
+                        voiceState = VoiceInputState(
+                            phase = VoiceInputPhase.MESSAGE,
+                            detail = voiceErrorMessage(error, copy)
+                        )
+                    }
+                    }
+                )
+            }.getOrNull()
+        }
+    }
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        voiceState = VoiceInputState(
+            phase = VoiceInputPhase.MESSAGE,
+            detail = if (granted) copy.voicePermissionGranted else copy.voicePermissionDenied
+        )
+    }
+    DisposableEffect(speechRecognizer) {
+        onDispose {
+            speechRecognizer?.cancel()
+            speechRecognizer?.destroy()
+        }
+    }
+
+    LaunchedEffect(text) {
+        if (text != inputValue.text) {
+            inputValue = TextFieldValue(
+                text = text,
+                selection = TextRange(text.length)
+            )
+        }
+    }
+
+    LaunchedEffect(voiceState) {
+        if (voiceState.phase == VoiceInputPhase.MESSAGE) {
+            delay(2200)
+            if (voiceState.phase == VoiceInputPhase.MESSAGE) {
+                voiceState = VoiceInputState()
+            }
+        }
+    }
+
+    LaunchedEffect(voiceState.phase) {
+        if (voiceState.phase == VoiceInputPhase.PROCESSING) {
+            delay(8000)
+            if (voiceState.phase == VoiceInputPhase.PROCESSING) {
+                cancellationRequested = true
+                speechRecognizer?.cancel()
+                val partialResult = latestPartialResult.trim()
+                latestPartialResult = ""
+                if (partialResult.isNotBlank()) {
+                    latestOnTextChange(appendRecognizedText(latestText, partialResult))
+                    voiceState = VoiceInputState()
+                } else {
+                    voiceState = VoiceInputState(
+                        phase = VoiceInputPhase.MESSAGE,
+                        detail = copy.voiceProcessingTimeout
+                    )
+                }
+            }
+        }
+    }
+
+    fun cancelVoiceInput() {
+        cancellationRequested = true
+        latestPartialResult = ""
+        speechRecognizer?.cancel()
+        voiceState = VoiceInputState(
+            phase = VoiceInputPhase.MESSAGE,
+            detail = copy.voiceCancelled
+        )
+    }
 
     Box(
         modifier = Modifier
@@ -1332,14 +1585,19 @@ private fun ChatInputBar(
             .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 8.dp)
     ) {
         AnimatedVisibility(
-            visible = isListening,
+            visible = voiceState.phase != VoiceInputPhase.IDLE,
             enter = fadeIn(tween(120)),
             exit = fadeOut(tween(140)),
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .offset(y = (-112).dp)
         ) {
-            VoiceListeningBubble(isDark = isDark, copy = copy)
+            VoiceListeningBubble(
+                isDark = isDark,
+                state = voiceState,
+                copy = copy,
+                onCancel = ::cancelVoiceInput
+            )
         }
 
         Column(
@@ -1378,8 +1636,11 @@ private fun ChatInputBar(
                     )
                 }
                 BasicTextField(
-                    value = text,
-                    onValueChange = onTextChange,
+                    value = inputValue,
+                    onValueChange = { newValue ->
+                        inputValue = newValue
+                        onTextChange(newValue.text)
+                    },
                     textStyle = TextStyle(
                         color = if (isDark) CognoDarkText else CognoText,
                         fontSize = 16.sp,
@@ -1413,21 +1674,104 @@ private fun ChatInputBar(
                         modifier = Modifier
                             .size(40.dp)
                             .clip(CircleShape)
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onPress = {
-                                        isListening = true
-                                        tryAwaitRelease()
-                                        isListening = false
+                            .pointerInput(speechRecognizer, languagePreference) {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    val longPress = awaitLongPressOrCancellation(down.id)
+                                    if (longPress != null) {
+                                        when {
+                                            voiceState.phase == VoiceInputPhase.LISTENING ||
+                                                voiceState.phase == VoiceInputPhase.PROCESSING -> Unit
+
+                                            ContextCompat.checkSelfPermission(
+                                                context,
+                                                Manifest.permission.RECORD_AUDIO
+                                            ) != PackageManager.PERMISSION_GRANTED -> {
+                                                microphonePermissionLauncher.launch(
+                                                    Manifest.permission.RECORD_AUDIO
+                                                )
+                                            }
+
+                                            speechRecognizer == null -> {
+                                                voiceState = VoiceInputState(
+                                                    phase = VoiceInputPhase.MESSAGE,
+                                                    detail = copy.voiceUnavailable
+                                                )
+                                            }
+
+                                            else -> {
+                                                cancellationRequested = false
+                                                latestPartialResult = ""
+                                                voiceState = VoiceInputState(
+                                                    phase = VoiceInputPhase.LISTENING,
+                                                    detail = copy.voiceReleaseToFinish
+                                                )
+                                                val started = runCatching {
+                                                    speechRecognizer.start(
+                                                        speechRecognitionLanguageTag(
+                                                            languagePreference
+                                                        )
+                                                    )
+                                                }.isSuccess
+                                                if (!started) {
+                                                    voiceState = VoiceInputState(
+                                                        phase = VoiceInputPhase.MESSAGE,
+                                                        detail = copy.voiceFailed
+                                                    )
+                                                } else {
+                                                    var shouldCancel = false
+                                                    var gestureEnded = false
+                                                    while (!gestureEnded) {
+                                                        val change = awaitPointerEvent()
+                                                            .changes
+                                                            .firstOrNull { it.id == down.id }
+                                                        if (change == null) {
+                                                            shouldCancel = true
+                                                            gestureEnded = true
+                                                        } else if (!change.pressed) {
+                                                            gestureEnded = true
+                                                        } else {
+                                                            val movedAway = (
+                                                                change.position - down.position
+                                                                ).getDistance() >=
+                                                                voiceCancelDistancePx
+                                                            if (movedAway != shouldCancel) {
+                                                                shouldCancel = movedAway
+                                                                voiceState = VoiceInputState(
+                                                                    phase = VoiceInputPhase.LISTENING,
+                                                                    detail = if (shouldCancel) {
+                                                                        copy.voiceReleaseToCancel
+                                                                    } else {
+                                                                        copy.voiceReleaseToFinish
+                                                                    }
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                    if (!shouldCancel) {
+                                                        voiceState = VoiceInputState(
+                                                            phase = VoiceInputPhase.PROCESSING,
+                                                            detail = copy.voiceProcessing
+                                                        )
+                                                        speechRecognizer.stop()
+                                                    } else {
+                                                        cancelVoiceInput()
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
-                                )
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Mic,
                             contentDescription = copy.voiceInput,
-                            tint = if (isListening) {
+                            tint = if (
+                                voiceState.phase == VoiceInputPhase.LISTENING ||
+                                voiceState.phase == VoiceInputPhase.PROCESSING
+                            ) {
                                 if (isDark) CognoDarkPrimary else CognoPrimary
                             } else if (isDark) {
                                 CognoDarkText.copy(alpha = 0.8f)
@@ -1438,8 +1782,10 @@ private fun ChatInputBar(
                         )
                     }
                     FilledIconButton(
-                        onClick = onSend,
-                        enabled = text.isNotBlank() && !isSending && attachment == null,
+                        onClick = if (isSending) onStopGenerating else onSend,
+                        enabled = isSending ||
+                            (text.isNotBlank() && attachment == null) ||
+                            attachment?.isImage == true,
                         colors = IconButtonDefaults.filledIconButtonColors(
                             containerColor = if (isDark) CognoDarkPrimary else CognoPrimary,
                             disabledContainerColor = CognoMuted.copy(alpha = 0.35f),
@@ -1449,8 +1795,10 @@ private fun ChatInputBar(
                         modifier = Modifier.size(38.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.ArrowUpward,
-                            contentDescription = copy.send,
+                            imageVector =
+                                if (isSending) Icons.Default.Close else Icons.Default.ArrowUpward,
+                            contentDescription =
+                                if (isSending) copy.stopGenerating else copy.send,
                             tint = Color.White,
                             modifier = Modifier.size(20.dp)
                         )
@@ -1519,7 +1867,12 @@ private fun PendingAttachmentRow(
 }
 
 @Composable
-private fun VoiceListeningBubble(isDark: Boolean, copy: ChatScreenCopy) {
+private fun VoiceListeningBubble(
+    isDark: Boolean,
+    state: VoiceInputState,
+    copy: ChatScreenCopy,
+    onCancel: () -> Unit
+) {
     val transition = rememberInfiniteTransition(label = "voice-listening")
     val pulse by transition.animateFloat(
         initialValue = 0.86f,
@@ -1565,18 +1918,52 @@ private fun VoiceListeningBubble(isDark: Boolean, copy: ChatScreenCopy) {
             Spacer(modifier = Modifier.width(12.dp))
             Column {
                 Text(
-                    text = copy.listening,
+                    text = when (state.phase) {
+                        VoiceInputPhase.LISTENING -> copy.listening
+                        VoiceInputPhase.PROCESSING -> copy.voiceProcessing
+                        VoiceInputPhase.MESSAGE -> copy.voiceInput
+                        VoiceInputPhase.IDLE -> copy.voiceInput
+                    },
                     color = if (isDark) CognoDarkText else CognoText,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
                 Text(
-                    text = copy.voiceComingSoon,
+                    text = state.detail,
                     color = CognoMuted,
                     fontSize = 11.sp
                 )
             }
+            Spacer(modifier = Modifier.width(8.dp))
+            IconButton(
+                onClick = onCancel,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = copy.cancel,
+                    tint = CognoMuted,
+                    modifier = Modifier.size(17.dp)
+                )
+            }
         }
+    }
+}
+
+private fun appendRecognizedText(currentText: String, recognizedText: String): String {
+    val recognized = recognizedText.trim()
+    if (currentText.isBlank()) return recognized
+    if (recognized.isBlank()) return currentText
+    return "${currentText.trimEnd()} $recognized"
+}
+
+private fun voiceErrorMessage(error: Int, copy: ChatScreenCopy): String {
+    return when (error) {
+        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> copy.voicePermissionDenied
+        SpeechRecognizer.ERROR_NO_MATCH,
+        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> copy.voiceNoMatch
+        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> copy.voiceUnavailable
+        else -> copy.voiceFailed
     }
 }
 

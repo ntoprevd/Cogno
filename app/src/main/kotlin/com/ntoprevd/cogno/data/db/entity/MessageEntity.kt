@@ -56,6 +56,14 @@ class MessageEntity(
     var feedback: String?,
 
     @JvmField
+    @ColumnInfo(name = "image_path")
+    var imagePath: String?,
+
+    @JvmField
+    @ColumnInfo(name = "image_mime_type")
+    var imageMimeType: String?,
+
+    @JvmField
     @ColumnInfo(name = "created_at")
     var createdAt: Long,
 

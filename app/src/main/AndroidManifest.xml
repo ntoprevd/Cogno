@@ -3,8 +3,14 @@
 
     <!-- Network access is reserved for later AI/API integration. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Voice input is not implemented yet; the permission is kept for the planned ASR feature. -->
+    <!-- Required by the chat input's Android SpeechRecognizer integration. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="true"

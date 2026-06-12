@@ -1,22 +1,31 @@
 package com.ntoprevd.cogno.data.network
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.provider.Settings
+import android.util.Base64
 import com.ntoprevd.cogno.BuildConfig
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
 import com.ntoprevd.cogno.data.settings.AiSettings
 import com.ntoprevd.cogno.data.settings.AiSourceMode
+import com.ntoprevd.cogno.data.settings.CustomAiProvider
 import com.ntoprevd.cogno.data.settings.ResponseStylePreference
 import java.io.IOException
+import java.io.File
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import kotlin.math.roundToInt
 
 class AiChatClient(context: Context) {
     private val appContext = context.applicationContext
@@ -29,6 +38,11 @@ class AiChatClient(context: Context) {
         .readTimeout(90, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
+    private val activeStreamingCall = AtomicReference<Call?>(null)
+
+    fun cancelStreamingRequest() {
+        activeStreamingCall.getAndSet(null)?.cancel()
+    }
 
     suspend fun requestChatCompletion(
         settings: AiSettings,
@@ -76,7 +90,10 @@ class AiChatClient(context: Context) {
             .post(buildRequestBody(settings, messages, stream = true).toString().toRequestBody(JSON_MEDIA_TYPE))
             .build()
 
-        client.newCall(request).execute().use { response ->
+        val call = client.newCall(request)
+        activeStreamingCall.set(call)
+        try {
+            call.execute().use { response ->
             if (!response.isSuccessful) {
                 val bodyText = response.body?.string().orEmpty()
                 throw AiChatException(parseErrorMessage(bodyText, response.code))
@@ -118,7 +135,13 @@ class AiChatClient(context: Context) {
             if (content.isBlank()) {
                 throw AiChatException("AI 返回内容为空")
             }
-            AiChatResponse(content = content, totalTokens = totalTokens)
+                AiChatResponse(content = content, totalTokens = totalTokens)
+            }
+        } catch (error: IOException) {
+            if (call.isCanceled()) throw AiRequestCancelledException()
+            throw error
+        } finally {
+            activeStreamingCall.compareAndSet(call, null)
         }
     }
 
@@ -231,13 +254,28 @@ class AiChatClient(context: Context) {
             )
         }
 
-        messages
-            .filter { it.status == "completed" && it.content.isNotBlank() }
-            .forEach { message ->
+        val completedMessages = messages
+            .filter {
+                it.status == "completed" &&
+                    (it.content.isNotBlank() || !it.imagePath.isNullOrBlank())
+            }
+        val activeImageMessageId = completedMessages
+            .lastOrNull()
+            ?.takeIf { it.role == "user" && !it.imagePath.isNullOrBlank() }
+            ?.id
+
+        completedMessages.forEach { message ->
                 requestMessages.put(
                     JSONObject()
                         .put("role", message.role)
-                        .put("content", message.content)
+                        .put(
+                            "content",
+                            buildMessageContent(
+                                settings = settings,
+                                message = message,
+                                includeImage = message.id == activeImageMessageId
+                            )
+                        )
                 )
             }
 
@@ -245,13 +283,127 @@ class AiChatClient(context: Context) {
             .put("model", settings.modelId)
             .put("messages", requestMessages)
             .put("stream", stream)
-            .put("temperature", settings.temperature)
+            .put("temperature", normalizedTemperature(settings.temperature))
             .apply {
                 // OpenAI-compatible 流式接口需要显式请求，才会在结束块返回 usage 汇总。
                 if (stream) {
                     put("stream_options", JSONObject().put("include_usage", true))
                 }
             }
+    }
+
+    private fun buildMessageContent(
+        settings: AiSettings,
+        message: MessageEntity,
+        includeImage: Boolean
+    ): Any {
+        val imagePath = message.imagePath
+        if (message.role != "user" || imagePath.isNullOrBlank()) {
+            return message.content
+        }
+
+        val isGlmModel = settings.modelId.startsWith("glm-", ignoreCase = true)
+        val isKnownTextOnlyModel = settings.sourceMode == AiSourceMode.CUSTOM &&
+            (
+                settings.customProvider == CustomAiProvider.DEEPSEEK ||
+                    (isGlmModel && !isGlmVisionModel(settings.modelId))
+                )
+        if (!includeImage || isKnownTextOnlyModel) {
+            // 历史图片和已知文本模型都只保留文字上下文，避免发送必然失败的 image_url。
+            return listOf("[图片消息]", message.content)
+                .filter { it.isNotBlank() }
+                .joinToString(" ")
+        }
+
+        val imageFile = File(imagePath)
+        if (!imageFile.isFile) {
+            return message.content.ifBlank { "[图片已不可用]" }
+        }
+
+        val mimeType = message.imageMimeType?.takeIf { it.startsWith("image/") } ?: "image/jpeg"
+        val imageBytes = if (isGlmModel) {
+            compressedGlmRequestBytes(imageFile)
+        } else {
+            imageFile.readBytes()
+        }
+        val base64 = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+        val imageUrl = if (isGlmModel) {
+            // 智谱 GLM 的 Base64 接口要求直接传编码内容，不使用 Data URI 前缀。
+            base64
+        } else {
+            "data:$mimeType;base64,$base64"
+        }
+        val contentParts = JSONArray()
+        contentParts.put(
+            JSONObject()
+                .put("type", "image_url")
+                .put(
+                    "image_url",
+                    JSONObject().put("url", imageUrl)
+                )
+        )
+        contentParts.put(
+            JSONObject()
+                .put("type", "text")
+                .put("text", message.content.ifBlank { "请描述这张图片。" })
+        )
+        return contentParts
+    }
+
+    private fun compressedGlmRequestBytes(imageFile: File): ByteArray {
+        val sourceBitmap = BitmapFactory.decodeFile(imageFile.absolutePath)
+            ?: return imageFile.readBytes()
+        var workingBitmap = scaleBitmapToLongestSide(sourceBitmap, GLM_REQUEST_IMAGE_SIDE)
+        return try {
+            var quality = GLM_REQUEST_JPEG_QUALITY
+            var encoded = encodeJpeg(workingBitmap, quality)
+            while (encoded.size > GLM_REQUEST_MAX_BYTES && quality > GLM_REQUEST_MIN_QUALITY) {
+                quality -= 5
+                encoded = encodeJpeg(workingBitmap, quality)
+            }
+            while (encoded.size > GLM_REQUEST_MAX_BYTES && maxOf(workingBitmap.width, workingBitmap.height) > 320) {
+                val previous = workingBitmap
+                workingBitmap = scaleBitmapToLongestSide(
+                    previous,
+                    (maxOf(previous.width, previous.height) * 0.8f).toInt()
+                )
+                if (previous !== sourceBitmap) previous.recycle()
+                encoded = encodeJpeg(workingBitmap, GLM_REQUEST_MIN_QUALITY)
+            }
+            encoded
+        } finally {
+            if (workingBitmap !== sourceBitmap) workingBitmap.recycle()
+            sourceBitmap.recycle()
+        }
+    }
+
+    private fun scaleBitmapToLongestSide(bitmap: Bitmap, targetSide: Int): Bitmap {
+        val longestSide = maxOf(bitmap.width, bitmap.height)
+        if (longestSide <= targetSide) return bitmap
+        val scale = targetSide.toFloat() / longestSide
+        return Bitmap.createScaledBitmap(
+            bitmap,
+            (bitmap.width * scale).toInt().coerceAtLeast(1),
+            (bitmap.height * scale).toInt().coerceAtLeast(1),
+            true
+        )
+    }
+
+    private fun encodeJpeg(bitmap: Bitmap, quality: Int): ByteArray {
+        return ByteArrayOutputStream().use { output ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, quality, output)
+            output.toByteArray()
+        }
+    }
+
+    private fun isGlmVisionModel(modelId: String): Boolean {
+        val normalized = modelId.lowercase()
+        return normalized.contains("glm") &&
+            (normalized.contains("4.6v") || normalized.contains("4.1v") || normalized.contains("5v"))
+    }
+
+    private fun normalizedTemperature(value: Double): Double {
+        return (value * 100.0).roundToInt() / 100.0
     }
 
     private fun parseErrorMessage(bodyText: String, code: Int): String {
@@ -285,8 +437,9 @@ class AiChatClient(context: Context) {
         return Request.Builder()
             .url("${baseUrl.trimEnd('/')}/$path")
             .addHeader("Content-Type", JSON_MEDIA_TYPE.toString())
-            .addHeader("X-Cogno-Device-Id", deviceId)
             .apply {
+                // A stable identifier is only needed by Cogno's own experience service.
+                if (experienceMode) addHeader("X-Cogno-Device-Id", deviceId)
                 if (token.isNotBlank()) addHeader("Authorization", "Bearer $token")
             }
     }
@@ -304,7 +457,7 @@ class AiChatClient(context: Context) {
                     )
             )
             .put("stream", false)
-            .put("temperature", settings.temperature)
+            .put("temperature", normalizedTemperature(settings.temperature))
             .put("max_tokens", 8)
     }
 
@@ -361,7 +514,7 @@ class AiChatClient(context: Context) {
                     )
             )
             .put("stream", false)
-            .put("temperature", settings.temperature)
+            .put("temperature", normalizedTemperature(settings.temperature))
     }
 
     private fun buildSystemPrompt(settings: AiSettings): String {
@@ -419,6 +572,10 @@ class AiChatClient(context: Context) {
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
         private const val SSE_DATA_PREFIX = "data:"
         private const val SSE_DONE_MARKER = "[DONE]"
+        private const val GLM_REQUEST_IMAGE_SIDE = 768
+        private const val GLM_REQUEST_JPEG_QUALITY = 65
+        private const val GLM_REQUEST_MIN_QUALITY = 35
+        private const val GLM_REQUEST_MAX_BYTES = 48 * 1024
     }
 }
 
@@ -446,3 +603,5 @@ data class ExperienceModel(
 )
 
 class AiChatException(message: String, cause: Throwable? = null) : IOException(message, cause)
+
+class AiRequestCancelledException : IOException("Generation cancelled")

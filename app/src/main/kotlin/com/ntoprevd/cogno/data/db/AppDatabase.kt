@@ -25,8 +25,8 @@ import com.ntoprevd.cogno.data.db.entity.TopicEntity
         TopicEntity::class,
         NoteTopicSegmentEntity::class
     ],
-    version = 4,
-    exportSchema = false
+    version = 5,
+    exportSchema = true
 )
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
@@ -51,7 +51,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                     .build()
                     .also { instance = it }
             }
@@ -113,6 +113,14 @@ abstract class AppDatabase : RoomDatabase() {
                 )
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_note_topic_segments_note_id ON note_topic_segments(note_id)")
                 db.execSQL("CREATE INDEX IF NOT EXISTS index_note_topic_segments_topic_name_created_at ON note_topic_segments(topic_name, created_at)")
+            }
+        }
+
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 图片文件保存在应用私有目录，消息表只记录可持久恢复的路径和 MIME 类型。
+                db.execSQL("ALTER TABLE messages ADD COLUMN image_path TEXT")
+                db.execSQL("ALTER TABLE messages ADD COLUMN image_mime_type TEXT")
             }
         }
     }

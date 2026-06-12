@@ -1,6 +1,7 @@
 package com.ntoprevd.cogno.ui.chat
 
 import android.app.Application
+import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
@@ -53,6 +54,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(inputText = value) }
     }
 
+    fun stopGenerating() {
+        repository.cancelAssistantReply()
+    }
+
     fun openDrawer() {
         _uiState.update { it.copy(isDrawerOpen = true) }
     }
@@ -85,17 +90,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun sendMessage(languagePreference: String) {
+    fun sendMessage(languagePreference: String, imageUri: Uri? = null) {
         val state = uiState.value
         val content = state.inputText.trim()
-        if (content.isEmpty() || state.isSending) return
+        if ((content.isEmpty() && imageUri == null) || state.isSending) return
         val copy = chatViewModelCopy(languagePreference)
 
         viewModelScope.launch {
             _uiState.update { it.copy(isSending = true, errorMessage = null) }
 
             runCatching {
-                repository.beginUserMessage(uiState.value.currentSessionId, content)
+                repository.beginUserMessage(uiState.value.currentSessionId, content, imageUri)
             }.onSuccess { result ->
                 observeMessages(result.session.id)
                 _uiState.update {
