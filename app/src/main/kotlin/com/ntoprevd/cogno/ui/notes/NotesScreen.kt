@@ -137,7 +137,7 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { it.copy(notes = notes) }
                 // 老版本笔记首次进入主题页时只做本地拆段，不调用 AI，也不改写原文。
                 notes.forEach { note ->
-                    topicRepository.syncSegments(note, emptyList(), note.sourceMessageCount)
+                    topicRepository.migrateLegacyNoteIfNeeded(note)
                 }
             }
         }
@@ -344,10 +344,8 @@ fun NotesScreen(
         buildPersistedTopicGroups(uiState.topicSegments, uiState.notes)
     }
     val displayTopicGroups = remember(topicGroups, uiState.topics) {
-        val activeNames = uiState.topics.map { it.name }.toSet()
         val pinnedNames = uiState.topics.filter { it.pinned }.map { it.name }.toSet()
         topicGroups
-            .filter { it.topic in activeNames }
             .sortedWith(
                 compareByDescending<TopicGroup> { it.topic in pinnedNames }
                     .thenByDescending { it.segments.size }

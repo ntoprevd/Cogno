@@ -1,14 +1,24 @@
 package com.ntoprevd.cogno.ui.chat
 
+import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.io.File
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -18,6 +28,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,14 +57,19 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Bookmark
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreHoriz
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -78,12 +94,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
@@ -98,6 +116,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.core.content.FileProvider
 import com.ntoprevd.cogno.R
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
 import com.ntoprevd.cogno.data.db.entity.SessionEntity
@@ -126,6 +145,12 @@ import kotlinx.coroutines.launch
 private const val FEEDBACK_LIKE = "like"
 private const val FEEDBACK_DISLIKE = "dislike"
 
+private data class PendingAttachment(
+    val uri: Uri,
+    val displayName: String,
+    val isImage: Boolean
+)
+
 private data class ChatScreenCopy(
     val openSidebar: String,
     val generateNote: String,
@@ -151,8 +176,15 @@ private data class ChatScreenCopy(
     val cancel: String,
     val confirm: String,
     val more: String,
+    val attachmentTitle: String,
+    val camera: String,
+    val photos: String,
+    val files: String,
+    val attachmentPending: String,
     val inputPlaceholder: String,
     val voiceInput: String,
+    val listening: String,
+    val voiceComingSoon: String,
     val send: String,
     val today: String,
     val emptySessions: String,
@@ -199,8 +231,15 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
             cancel = "Cancel",
             confirm = "OK",
             more = "More",
+            attachmentTitle = "Add attachment",
+            camera = "Camera",
+            photos = "Photos",
+            files = "Files",
+            attachmentPending = "Selected · multimodal sending is not connected yet",
             inputPlaceholder = "Type a message...",
             voiceInput = "Voice input",
+            listening = "Listening...",
+            voiceComingSoon = "Release to finish · speech recognition is coming soon",
             send = "Send",
             today = "Today",
             emptySessions = "No chat history",
@@ -250,8 +289,15 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
             cancel = "取消",
             confirm = "确定",
             more = "更多",
+            attachmentTitle = "添加附件",
+            camera = "拍照",
+            photos = "相册",
+            files = "文件",
+            attachmentPending = "已选择 · 多模态发送暂未接入",
             inputPlaceholder = "输入消息...",
             voiceInput = "语音输入",
+            listening = "正在聆听...",
+            voiceComingSoon = "松开结束 · 语音识别即将开放",
             send = "发送",
             today = "今天",
             emptySessions = "暂无历史会话",
@@ -292,10 +338,46 @@ fun ChatScreen(
     viewModel: ChatViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val isDark = isCognoDarkTheme()
     val listState = rememberLazyListState()
     val background = if (isDark) CognoDarkBackground else CognoBackground
     val copy = chatScreenCopy(languagePreference)
+    var attachmentMenuVisible by remember { mutableStateOf(false) }
+    var pendingAttachment by remember { mutableStateOf<PendingAttachment?>(null) }
+    var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+
+    fun selectDocument(uri: Uri, isImage: Boolean) {
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION
+            )
+        }
+        pendingAttachment = PendingAttachment(
+            uri = uri,
+            displayName = attachmentDisplayName(context, uri),
+            isImage = isImage
+        )
+    }
+
+    val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { selectDocument(it, isImage = true) }
+    }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { selectDocument(it, isImage = false) }
+    }
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+        val cameraUri = pendingCameraUri
+        if (saved && cameraUri != null) {
+            pendingAttachment = PendingAttachment(
+                uri = cameraUri,
+                displayName = "Cogno_${System.currentTimeMillis()}.jpg",
+                isImage = true
+            )
+        }
+        pendingCameraUri = null
+    }
 
     LaunchedEffect(uiState.messages.size, uiState.currentSessionId) {
         if (uiState.messages.isNotEmpty()) {
@@ -380,8 +462,11 @@ fun ChatScreen(
                 text = uiState.inputText,
                 isDark = isDark,
                 isSending = uiState.isSending,
+                attachment = pendingAttachment,
                 onTextChange = viewModel::onInputChange,
                 onSend = { viewModel.sendMessage(languagePreference) },
+                onAddAttachment = { attachmentMenuVisible = true },
+                onRemoveAttachment = { pendingAttachment = null },
                 copy = copy
             )
         }
@@ -421,7 +506,43 @@ fun ChatScreen(
                 }
             )
         }
+
+        if (attachmentMenuVisible) {
+            AttachmentPickerDialog(
+                isDark = isDark,
+                copy = copy,
+                onDismiss = { attachmentMenuVisible = false },
+                onCamera = {
+                    attachmentMenuVisible = false
+                    val cameraDirectory = File(context.cacheDir, "camera").apply { mkdirs() }
+                    val outputFile = File.createTempFile("cogno_", ".jpg", cameraDirectory)
+                    val outputUri = FileProvider.getUriForFile(
+                        context,
+                        "${context.packageName}.fileprovider",
+                        outputFile
+                    )
+                    pendingCameraUri = outputUri
+                    cameraLauncher.launch(outputUri)
+                },
+                onPhotos = {
+                    attachmentMenuVisible = false
+                    photoPicker.launch(arrayOf("image/*"))
+                },
+                onFiles = {
+                    attachmentMenuVisible = false
+                    filePicker.launch(arrayOf("*/*"))
+                }
+            )
+        }
     }
+}
+
+private fun attachmentDisplayName(context: android.content.Context, uri: Uri): String {
+    val resolver = context.contentResolver
+    return resolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (index >= 0 && cursor.moveToFirst()) cursor.getString(index) else null
+    } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "附件"
 }
 
 @Composable
@@ -621,6 +742,124 @@ private fun NoteStyleAction(
             lineHeight = 17.sp
         )
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AttachmentPickerDialog(
+    isDark: Boolean,
+    copy: ChatScreenCopy,
+    onDismiss: () -> Unit,
+    onCamera: () -> Unit,
+    onPhotos: () -> Unit,
+    onFiles: () -> Unit
+) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(22.dp),
+            shadowElevation = 18.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 30.dp)
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) CognoDarkLine else CognoLine,
+                    shape = RoundedCornerShape(22.dp)
+                )
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Text(
+                    text = copy.attachmentTitle,
+                    color = if (isDark) CognoDarkText else CognoText,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(15.dp))
+                        .border(
+                            width = 1.dp,
+                            color = if (isDark) CognoDarkLine else CognoLine,
+                            shape = RoundedCornerShape(15.dp)
+                        )
+                ) {
+                    AttachmentPickerAction(Icons.Default.CameraAlt, copy.camera, isDark, onCamera)
+                    AttachmentDivider(isDark)
+                    AttachmentPickerAction(Icons.Default.PhotoLibrary, copy.photos, isDark, onPhotos)
+                    AttachmentDivider(isDark)
+                    AttachmentPickerAction(Icons.AutoMirrored.Filled.InsertDriveFile, copy.files, isDark, onFiles)
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = copy.cancel,
+                    color = if (isDark) CognoDarkPrimary else CognoPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable(onClick = onDismiss)
+                        .padding(vertical = 11.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttachmentPickerAction(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    isDark: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 15.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(11.dp))
+                .background(
+                    (if (isDark) CognoDarkPrimary else CognoPrimary).copy(alpha = 0.12f)
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (isDark) CognoDarkPrimary else CognoPrimary,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = label,
+            color = if (isDark) CognoDarkText else CognoText,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Medium
+        )
+    }
+}
+
+@Composable
+private fun AttachmentDivider(isDark: Boolean) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(if (isDark) CognoDarkLine else CognoLine)
+    )
 }
 
 @Composable
@@ -1076,10 +1315,15 @@ private fun ChatInputBar(
     text: String,
     isDark: Boolean,
     isSending: Boolean,
+    attachment: PendingAttachment?,
     onTextChange: (String) -> Unit,
     onSend: () -> Unit,
+    onAddAttachment: () -> Unit,
+    onRemoveAttachment: () -> Unit,
     copy: ChatScreenCopy
 ) {
+    var isListening by remember { mutableStateOf(false) }
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -1087,7 +1331,18 @@ private fun ChatInputBar(
             .navigationBarsPadding()
             .padding(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 8.dp)
     ) {
-        Row(
+        AnimatedVisibility(
+            visible = isListening,
+            enter = fadeIn(tween(120)),
+            exit = fadeOut(tween(140)),
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .offset(y = (-112).dp)
+        ) {
+            VoiceListeningBubble(isDark = isDark, copy = copy)
+        }
+
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .shadow(
@@ -1104,74 +1359,222 @@ private fun ChatInputBar(
                     shape = RoundedCornerShape(30.dp)
                 )
                 .padding(6.dp),
-            verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = { }, modifier = Modifier.size(40.dp)) {
-                Icon(
-                    imageVector = Icons.Default.Add,
-                    contentDescription = copy.more,
-                    tint = CognoMuted,
-                    modifier = Modifier.size(21.dp)
+            if (attachment != null) {
+                PendingAttachmentRow(
+                    attachment = attachment,
+                    message = copy.attachmentPending,
+                    isDark = isDark,
+                    onRemove = onRemoveAttachment
                 )
             }
-            BasicTextField(
-                value = text,
-                onValueChange = onTextChange,
-                textStyle = TextStyle(
-                    color = if (isDark) CognoDarkText else CognoText,
-                    fontSize = 16.sp,
-                    lineHeight = 22.sp
-                ),
-                minLines = 1,
-                maxLines = 4,
-                cursorBrush = androidx.compose.ui.graphics.SolidColor(
-                    if (isDark) CognoDarkPrimary else CognoPrimary
-                ),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 4.dp, vertical = 9.dp),
-                decorationBox = { innerTextField ->
-                    if (text.isEmpty()) {
-                        Text(
-                            text = copy.inputPlaceholder,
-                            color = CognoMuted,
-                            fontSize = 16.sp,
-                            lineHeight = 22.sp
-                        )
-                    }
-                    innerTextField()
-                }
-            )
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                IconButton(onClick = { }, modifier = Modifier.size(40.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onAddAttachment, modifier = Modifier.size(40.dp)) {
                     Icon(
-                        imageVector = Icons.Default.Mic,
-                        contentDescription = copy.voiceInput,
-                        tint = if (isDark) CognoDarkText.copy(alpha = 0.8f) else CognoText.copy(alpha = 0.8f),
+                        imageVector = Icons.Default.Add,
+                        contentDescription = copy.more,
+                        tint = CognoMuted,
                         modifier = Modifier.size(21.dp)
                     )
                 }
-                FilledIconButton(
-                    onClick = onSend,
-                    enabled = text.isNotBlank() && !isSending,
-                    colors = IconButtonDefaults.filledIconButtonColors(
-                        containerColor = if (isDark) CognoDarkPrimary else CognoPrimary,
-                        disabledContainerColor = CognoMuted.copy(alpha = 0.35f),
-                        contentColor = Color.White,
-                        disabledContentColor = Color.White.copy(alpha = 0.92f)
+                BasicTextField(
+                    value = text,
+                    onValueChange = onTextChange,
+                    textStyle = TextStyle(
+                        color = if (isDark) CognoDarkText else CognoText,
+                        fontSize = 16.sp,
+                        lineHeight = 22.sp
                     ),
-                    modifier = Modifier.size(38.dp)
+                    minLines = 1,
+                    maxLines = 4,
+                    cursorBrush = androidx.compose.ui.graphics.SolidColor(
+                        if (isDark) CognoDarkPrimary else CognoPrimary
+                    ),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 4.dp, vertical = 9.dp),
+                    decorationBox = { innerTextField ->
+                        if (text.isEmpty()) {
+                            Text(
+                                text = copy.inputPlaceholder,
+                                color = CognoMuted,
+                                fontSize = 16.sp,
+                                lineHeight = 22.sp
+                            )
+                        }
+                        innerTextField()
+                    }
+                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.ArrowUpward,
-                        contentDescription = copy.send,
-                        tint = Color.White,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .clip(CircleShape)
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onPress = {
+                                        isListening = true
+                                        tryAwaitRelease()
+                                        isListening = false
+                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Mic,
+                            contentDescription = copy.voiceInput,
+                            tint = if (isListening) {
+                                if (isDark) CognoDarkPrimary else CognoPrimary
+                            } else if (isDark) {
+                                CognoDarkText.copy(alpha = 0.8f)
+                            } else {
+                                CognoText.copy(alpha = 0.8f)
+                            },
+                            modifier = Modifier.size(21.dp)
+                        )
+                    }
+                    FilledIconButton(
+                        onClick = onSend,
+                        enabled = text.isNotBlank() && !isSending && attachment == null,
+                        colors = IconButtonDefaults.filledIconButtonColors(
+                            containerColor = if (isDark) CognoDarkPrimary else CognoPrimary,
+                            disabledContainerColor = CognoMuted.copy(alpha = 0.35f),
+                            contentColor = Color.White,
+                            disabledContentColor = Color.White.copy(alpha = 0.92f)
+                        ),
+                        modifier = Modifier.size(38.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ArrowUpward,
+                            contentDescription = copy.send,
+                            tint = Color.White,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PendingAttachmentRow(
+    attachment: PendingAttachment,
+    message: String,
+    isDark: Boolean,
+    onRemove: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 8.dp, end = 4.dp, top = 4.dp, bottom = 2.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                (if (isDark) CognoDarkPrimary else CognoPrimary).copy(alpha = 0.09f)
+            )
+            .padding(start = 11.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = if (attachment.isImage) {
+                Icons.Default.PhotoLibrary
+            } else {
+                Icons.AutoMirrored.Filled.InsertDriveFile
+            },
+            contentDescription = null,
+            tint = if (isDark) CognoDarkPrimary else CognoPrimary,
+            modifier = Modifier.size(19.dp)
+        )
+        Spacer(modifier = Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = attachment.displayName,
+                color = if (isDark) CognoDarkText else CognoText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = message,
+                color = CognoMuted,
+                fontSize = 10.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = null,
+                tint = CognoMuted,
+                modifier = Modifier.size(17.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun VoiceListeningBubble(isDark: Boolean, copy: ChatScreenCopy) {
+    val transition = rememberInfiniteTransition(label = "voice-listening")
+    val pulse by transition.animateFloat(
+        initialValue = 0.86f,
+        targetValue = 1.14f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(720),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "voice-pulse"
+    )
+
+    Surface(
+        color = if (isDark) CognoDarkSurface else Color.White,
+        shape = RoundedCornerShape(20.dp),
+        shadowElevation = 16.dp,
+        modifier = Modifier.border(
+            width = 1.dp,
+            color = if (isDark) CognoDarkLine else CognoLine,
+            shape = RoundedCornerShape(20.dp)
+        )
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .scale(pulse)
+                    .clip(CircleShape)
+                    .background(
+                        (if (isDark) CognoDarkPrimary else CognoPrimary).copy(alpha = 0.16f)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.GraphicEq,
+                    contentDescription = null,
+                    tint = if (isDark) CognoDarkPrimary else CognoPrimary,
+                    modifier = Modifier.size(23.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column {
+                Text(
+                    text = copy.listening,
+                    color = if (isDark) CognoDarkText else CognoText,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Text(
+                    text = copy.voiceComingSoon,
+                    color = CognoMuted,
+                    fontSize = 11.sp
+                )
             }
         }
     }

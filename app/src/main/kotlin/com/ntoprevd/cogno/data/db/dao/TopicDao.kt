@@ -17,6 +17,9 @@ interface TopicDao {
     @Query("SELECT * FROM topics WHERE enabled = 1 ORDER BY is_builtin DESC, created_at ASC")
     suspend fun getEnabledTopics(): List<TopicEntity>
 
+    @Query("SELECT COUNT(*) FROM topics")
+    suspend fun countTopics(): Int
+
     @Query("SELECT * FROM topics WHERE id = :id LIMIT 1")
     suspend fun getTopic(id: String): TopicEntity?
 
@@ -44,9 +47,4 @@ interface TopicDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertSegments(segments: List<NoteTopicSegmentEntity>)
 
-    @Query("UPDATE note_topic_segments SET topic_name = :name WHERE topic_name = :oldName")
-    suspend fun renameSegmentTopic(oldName: String, name: String)
-
-    @Query("DELETE FROM note_topic_segments WHERE topic_name = :name")
-    suspend fun deleteSegmentsByTopic(name: String)
 }

@@ -13,14 +13,23 @@ import kotlinx.coroutines.flow.Flow
 
 class TopicRepository(context: Context) {
     private val topicDao = AppDatabase.getInstance(context).topicDao()
+    private val preferences = context.applicationContext.getSharedPreferences(
+        TOPIC_PREFERENCES,
+        Context.MODE_PRIVATE
+    )
 
     fun observeTopics(): Flow<List<TopicEntity>> = topicDao.observeTopics()
 
     fun observeSegments(): Flow<List<NoteTopicSegmentEntity>> = topicDao.observeSegments()
 
     suspend fun ensureDefaultTopics() {
-        if (topicDao.getEnabledTopics().isNotEmpty()) return
+        if (preferences.getBoolean(KEY_RULES_INITIALIZED, false)) return
+        if (topicDao.countTopics() > 0) {
+            preferences.edit().putBoolean(KEY_RULES_INITIALIZED, true).apply()
+            return
+        }
         topicDao.insertTopics(defaultTopics())
+        preferences.edit().putBoolean(KEY_RULES_INITIALIZED, true).apply()
     }
 
     suspend fun enabledTopics(): List<TopicEntity> {
@@ -56,8 +65,7 @@ class TopicRepository(context: Context) {
                 updatedAt = System.currentTimeMillis()
             )
         )
-        // 用户主动重命名时同步历史标签名称，但不重新分析或改写段落内容。
-        if (topic.name != safeName) topicDao.renameSegmentTopic(topic.name, safeName)
+        // 历史单元保存生成当时的主题快照；规则改名只影响以后新增的单元。
     }
 
     suspend fun deleteTopic(topic: TopicEntity) {
@@ -71,17 +79,19 @@ class TopicRepository(context: Context) {
     suspend fun resetTopics() {
         topicDao.deleteAllTopics()
         topicDao.insertTopics(defaultTopics())
+        preferences.edit().putBoolean(KEY_RULES_INITIALIZED, true).apply()
     }
 
     suspend fun syncSegments(
         note: NoteEntity,
         aiSegments: List<AiNoteSegment>,
+        fallbackContent: String,
         sourceMessageCount: Int
     ) {
         val topics = enabledTopics()
         val candidates = aiSegments
             .filter { it.content.isNotBlank() }
-            .ifEmpty { splitMarkdown(note.content) }
+            .ifEmpty { splitMarkdown(fallbackContent) }
         val existingIds = topicDao.getSegmentIdsForNote(note.id).toSet()
         val now = System.currentTimeMillis()
         val rows = candidates.mapIndexedNotNull { index, segment ->
@@ -104,6 +114,16 @@ class TopicRepository(context: Context) {
         if (rows.isNotEmpty()) topicDao.insertSegments(rows)
     }
 
+    suspend fun migrateLegacyNoteIfNeeded(note: NoteEntity) {
+        if (topicDao.getSegmentIdsForNote(note.id).isNotEmpty()) return
+        syncSegments(
+            note = note,
+            aiSegments = emptyList(),
+            fallbackContent = note.content,
+            sourceMessageCount = note.sourceMessageCount
+        )
+    }
+
     private fun normalizeTopic(
         requested: String,
         content: String,
@@ -116,7 +136,7 @@ class TopicRepository(context: Context) {
                 .map(String::trim)
                 .filter(String::isNotBlank)
                 .any { normalized.contains(it.lowercase(Locale.ROOT)) }
-        }?.name ?: topics.firstOrNull()?.name ?: "综合知识"
+        }?.name ?: topics.firstOrNull()?.name ?: "未分类"
     }
 
     private fun splitMarkdown(content: String): List<AiNoteSegment> {
@@ -143,6 +163,9 @@ class TopicRepository(context: Context) {
     }
 
     companion object {
+        private const val TOPIC_PREFERENCES = "cogno_topic_settings"
+        private const val KEY_RULES_INITIALIZED = "rules_initialized"
+
         private fun stableSegmentId(noteId: String, content: String): String {
             val normalized = content.replace(Regex("\\s+"), " ").trim()
             return UUID.nameUUIDFromBytes(

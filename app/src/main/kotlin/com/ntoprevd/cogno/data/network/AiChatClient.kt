@@ -317,14 +317,15 @@ class AiChatClient(context: Context) {
         topicNames: List<String>
     ): JSONObject {
         val systemPrompt = """
-            你是 Cogno 的结构化笔记助手。请把用户和 AI 的对话整理成一篇清晰、可复习的中文 Markdown 笔记。
+            你是 Cogno 的结构化笔记助手。请把本次提供的用户和 AI 对话整理成清晰、可复习的中文 Markdown 笔记内容。
             要求：
             1. 只总结对话中已经出现的信息，不要编造。
             2. 使用二级/三级标题、要点列表和必要的解释。
             3. 去掉寒暄和重复内容，保留关键结论、步骤、概念和注意事项。
             4. 按用户选择的总结风格控制详略：$style。
-            5. 如果提供了已有笔记，请在已有笔记基础上合并新信息，避免重复堆叠。
-            6. 返回严格 JSON，格式为 {"title":"简短标题","content":"Markdown 内容"}。
+            5. 如果提供了已有笔记，它只用于参考既有结构和避免重复；绝对不要改写、复述或返回已有笔记。
+            6. content 只能包含本次新增对话对应的追加内容；首次总结时才包含完整总结。
+            7. 返回严格 JSON，格式为 {"title":"简短标题","content":"本次新增的 Markdown 内容","segments":[]}。
         """.trimIndent()
         val userContent = buildString {
             append("会话标题：")
@@ -338,11 +339,12 @@ class AiChatClient(context: Context) {
             append("对话内容：\n")
             append(conversationText)
             append("\n\n可用主题：")
-            append(topicNames.joinToString().ifBlank { "综合知识" })
+            append(topicNames.joinToString().ifBlank { "未分类" })
             append(
                 "\n请在 title、content 字段之外返回 segments 数组。" +
                     "每项格式为 {\"topic\":\"主题\",\"heading\":\"段落标题\",\"content\":\"最小内容单元 Markdown\"}。" +
-                    "更新已有笔记时，segments 只返回本次新增内容的单元，不要重复旧单元。"
+                    "更新已有笔记时，content 和 segments 都只返回本次新增内容，不要返回任何已有内容。" +
+                    "主题必须优先从可用主题中选择；规则修改不影响历史单元。"
             )
         }
 
@@ -401,6 +403,9 @@ class AiChatClient(context: Context) {
                 content = content,
                 segments = segments
             )
+        }
+        if (parsed != null) {
+            throw AiChatException("AI 返回的笔记正文为空，请重试")
         }
 
         return AiNoteDraft(

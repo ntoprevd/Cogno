@@ -226,13 +226,18 @@ class NativeChatRepository(context: Context) {
         )
         val now = System.currentTimeMillis()
         if (existingNote != null) {
-            existingNote.title = draft.title.ifBlank { existingNote.title }
-            existingNote.content = draft.content
-            existingNote.preview = preview(markdownPlainText(draft.content))
+            val appendedContent = draft.content.trim()
+            existingNote.content = appendNoteContent(existingNote.content, appendedContent)
+            existingNote.preview = preview(markdownPlainText(existingNote.content))
             existingNote.sourceMessageCount = messages.size
             existingNote.updatedAt = now
             noteDao.updateNote(existingNote)
-            topicRepository.syncSegments(existingNote, draft.segments, messages.size)
+            topicRepository.syncSegments(
+                note = existingNote,
+                aiSegments = draft.segments,
+                fallbackContent = appendedContent,
+                sourceMessageCount = messages.size
+            )
             return GeneratedNoteResult(existingNote, GeneratedNoteResult.UPDATED)
         }
 
@@ -248,7 +253,12 @@ class NativeChatRepository(context: Context) {
             updatedAt = now
         )
         noteDao.insertNote(note)
-        topicRepository.syncSegments(note, draft.segments, messages.size)
+        topicRepository.syncSegments(
+            note = note,
+            aiSegments = draft.segments,
+            fallbackContent = draft.content,
+            sourceMessageCount = messages.size
+        )
         return GeneratedNoteResult(note, GeneratedNoteResult.CREATED)
     }
 
@@ -338,4 +348,12 @@ class NativeChatRepository(context: Context) {
         private const val ROLE_USER = "user"
         private const val ROLE_ASSISTANT = "assistant"
     }
+}
+
+internal fun appendNoteContent(existingContent: String, appendedContent: String): String {
+    val existing = existingContent.trimEnd()
+    val addition = appendedContent.trim()
+    if (addition.isBlank()) return existing
+    if (existing.isBlank()) return addition
+    return "$existing\n\n$addition"
 }
