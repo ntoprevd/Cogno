@@ -41,6 +41,10 @@ local.properties
 keystore.properties
 .env
 server/.env
+server/.env.*
+!server/.env.example
+server/.dev.vars
+server/.wrangler/
 
 # NDK 和外部构建工具
 .externalNativeBuild
