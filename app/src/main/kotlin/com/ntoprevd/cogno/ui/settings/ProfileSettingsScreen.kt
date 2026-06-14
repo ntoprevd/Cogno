@@ -1,6 +1,8 @@
 package com.ntoprevd.cogno.ui.settings
 
 import android.content.Intent
+import android.content.ContentResolver
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,6 +35,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -42,6 +45,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -58,6 +62,8 @@ import com.ntoprevd.cogno.ui.theme.CognoMuted
 import com.ntoprevd.cogno.ui.theme.CognoPrimary
 import com.ntoprevd.cogno.ui.theme.CognoText
 import com.ntoprevd.cogno.ui.theme.isCognoDarkTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ProfileSettingsScreen(
@@ -285,13 +291,22 @@ fun UserAvatar(
     isDark: Boolean
 ) {
     val context = LocalContext.current
-    val bitmap = remember(avatarUri) {
-        if (avatarUri.isBlank()) {
+    val targetSizePx = with(LocalDensity.current) { size.dp.roundToPx() }
+    val bitmap by produceState<Bitmap?>(
+        initialValue = null,
+        key1 = avatarUri,
+        key2 = targetSizePx
+    ) {
+        value = if (avatarUri.isBlank()) {
             null
         } else {
-            runCatching {
-                context.contentResolver.openInputStream(Uri.parse(avatarUri))?.use(BitmapFactory::decodeStream)
-            }.getOrNull()
+            withContext(Dispatchers.IO) {
+                decodeSampledBitmap(
+                    contentResolver = context.contentResolver,
+                    uri = Uri.parse(avatarUri),
+                    targetSizePx = targetSizePx
+                )
+            }
         }
     }
     Box(
@@ -301,9 +316,10 @@ fun UserAvatar(
             .background(if (isDark) CognoDarkPrimary else CognoPrimary),
         contentAlignment = Alignment.Center
     ) {
-        if (bitmap != null) {
+        val avatarBitmap = bitmap
+        if (avatarBitmap != null) {
             Image(
-                bitmap = bitmap.asImageBitmap(),
+                bitmap = avatarBitmap.asImageBitmap(),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
@@ -317,4 +333,31 @@ fun UserAvatar(
             )
         }
     }
+}
+
+private fun decodeSampledBitmap(
+    contentResolver: ContentResolver,
+    uri: Uri,
+    targetSizePx: Int
+): Bitmap? {
+    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+    runCatching {
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+    }.getOrNull()
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return null
+
+    var sampleSize = 1
+    while (
+        bounds.outWidth / (sampleSize * 2) >= targetSizePx &&
+        bounds.outHeight / (sampleSize * 2) >= targetSizePx
+    ) {
+        sampleSize *= 2
+    }
+    val options = BitmapFactory.Options().apply {
+        inSampleSize = sampleSize
+        inPreferredConfig = Bitmap.Config.ARGB_8888
+    }
+    return runCatching {
+        contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, options) }
+    }.getOrNull()
 }

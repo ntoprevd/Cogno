@@ -6,7 +6,7 @@ Node.js 20+ model proxy for Cogno's developer-sponsored experience models.
 
 1. Copy `.env.example` values into your shell or deployment platform.
 2. Set `GLM_API_KEY` to the provider key.
-3. Set `COGNO_APP_TOKEN` to a random value.
+3. Set `COGNO_APP_TOKEN` to a random value used as a coarse demo-environment gate.
 4. Run `npm start`.
 
 The server intentionally has no npm runtime dependencies.
@@ -39,6 +39,11 @@ Dashboard deployment:
 6. Append `/v1` to that URL for Android's `COGNO_EXPERIENCE_BASE_URL`.
 
 The Android app token must match the Worker secret. The GLM key remains only inside Cloudflare.
+
+`COGNO_APP_TOKEN` is embedded in the demo APK and must not be treated as a secret or user
+authentication mechanism. For a public deployment, enable Cloudflare Rate Limiting (preferably by
+IP and route) or replace the demo gate with account-backed short-lived tokens. The Node gateway
+uses the request source IP for its in-memory daily demo quota and does not require a device ID.
 
 ## Android configuration
 

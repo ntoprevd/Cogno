@@ -114,6 +114,16 @@ class TopicRepository(context: Context) {
         if (rows.isNotEmpty()) topicDao.insertSegments(rows)
     }
 
+    suspend fun replaceSegments(
+        note: NoteEntity,
+        aiSegments: List<AiNoteSegment>,
+        fallbackContent: String,
+        sourceMessageCount: Int
+    ) {
+        topicDao.deleteSegmentsForNote(note.id)
+        syncSegments(note, aiSegments, fallbackContent, sourceMessageCount)
+    }
+
     suspend fun migrateLegacyNoteIfNeeded(note: NoteEntity) {
         if (topicDao.getSegmentIdsForNote(note.id).isNotEmpty()) return
         syncSegments(

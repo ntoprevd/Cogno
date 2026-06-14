@@ -1533,8 +1533,8 @@ private fun formatBytes(bytes: Long): String {
     val kb = 1024.0
     val mb = kb * 1024.0
     return when {
-        bytes >= mb -> String.format("%.1f MB", bytes / mb)
-        bytes >= kb -> String.format("%.1f KB", bytes / kb)
+        bytes >= mb -> String.format(Locale.getDefault(), "%.1f MB", bytes / mb)
+        bytes >= kb -> String.format(Locale.getDefault(), "%.1f KB", bytes / kb)
         else -> "$bytes B"
     }
 }

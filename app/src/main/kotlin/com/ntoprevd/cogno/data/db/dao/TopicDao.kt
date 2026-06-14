@@ -47,4 +47,6 @@ interface TopicDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertSegments(segments: List<NoteTopicSegmentEntity>)
 
+    @Query("DELETE FROM note_topic_segments WHERE note_id = :noteId")
+    suspend fun deleteSegmentsForNote(noteId: String)
 }

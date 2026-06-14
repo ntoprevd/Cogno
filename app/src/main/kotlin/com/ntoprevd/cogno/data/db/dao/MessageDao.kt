@@ -33,6 +33,14 @@ interface MessageDao {
     )
     suspend fun getRecentMessagesBySessionId(sessionId: String, limit: Int): List<MessageEntity>
 
+    @Query(
+        "SELECT * FROM messages " +
+            "WHERE session_id = :sessionId AND status = 'completed' " +
+            "AND (content != '' OR image_path IS NOT NULL) " +
+            "ORDER BY created_at ASC"
+    )
+    suspend fun getCompletedMessagesForNote(sessionId: String): List<MessageEntity>
+
     @Query("SELECT * FROM messages WHERE id = :id LIMIT 1")
     suspend fun getMessageById(id: String): MessageEntity?
 
@@ -72,6 +80,19 @@ interface MessageDao {
     )
     suspend fun getNextAssistantMessage(sessionId: String, createdAfter: Long): MessageEntity?
 
+    @Query(
+        "SELECT image_path FROM messages " +
+            "WHERE session_id = :sessionId AND image_path IS NOT NULL"
+    )
+    suspend fun getImagePathsBySessionId(sessionId: String): List<String>
+
+    @Query(
+        "SELECT image_path FROM messages " +
+            "WHERE session_id = :sessionId AND created_at > :createdAfter " +
+            "AND image_path IS NOT NULL"
+    )
+    suspend fun getImagePathsAfter(sessionId: String, createdAfter: Long): List<String>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertMessage(message: MessageEntity)
 
@@ -89,6 +110,19 @@ interface MessageDao {
             "WHERE session_id = :sessionId AND created_at > :createdAfter"
     )
     suspend fun deleteMessagesAfter(sessionId: String, createdAfter: Long)
+
+    @Query(
+        "UPDATE messages SET " +
+            "status = 'failed', " +
+            "error_code = 'Interrupted', " +
+            "content = CASE WHEN content = '' THEN :emptyMessage ELSE content END, " +
+            "updated_at = :updatedAt " +
+            "WHERE role = 'assistant' AND status IN ('pending', 'streaming')"
+    )
+    suspend fun markInterruptedAssistantMessagesFailed(
+        emptyMessage: String,
+        updatedAt: Long
+    ): Int
 
     @Query(
         "SELECT COALESCE(SUM(token_count), 0) FROM messages " +

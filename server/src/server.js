@@ -8,7 +8,7 @@ const models = JSON.parse(
   await readFile(join(here, "..", "config", "models.json"), "utf8")
 );
 const enabledModels = models.filter((model) => model.enabled);
-const usageByDevice = new Map();
+const usageByClient = new Map();
 
 const config = {
   host: env("HOST", "0.0.0.0"),
@@ -88,8 +88,7 @@ async function proxyChatCompletion(request, response) {
   const inputChars = JSON.stringify(body.messages ?? []).length;
   if (inputChars > config.maxInputChars) throw httpError(413, "输入内容过长");
 
-  const deviceId = String(request.headers["x-cogno-device-id"] ?? "unknown");
-  const usage = getTodayUsage(deviceId);
+  const usage = getTodayUsage(clientAddress(request));
   if (usage.requests >= config.dailyRequestLimit) throw httpError(429, "今日体验请求次数已用完");
   if (usage.tokens >= config.dailyTokenLimit) throw httpError(429, "今日体验 Token 已用完");
 
@@ -162,11 +161,18 @@ async function readJsonBody(request) {
   }
 }
 
-function getTodayUsage(deviceId) {
+function getTodayUsage(clientKey) {
   const day = new Date().toISOString().slice(0, 10);
-  const key = `${day}:${deviceId}`;
-  if (!usageByDevice.has(key)) usageByDevice.set(key, { requests: 0, tokens: 0 });
-  return usageByDevice.get(key);
+  const key = `${day}:${clientKey}`;
+  if (!usageByClient.has(key)) usageByClient.set(key, { requests: 0, tokens: 0 });
+  return usageByClient.get(key);
+}
+
+function clientAddress(request) {
+  const forwarded = String(request.headers["x-forwarded-for"] ?? "")
+    .split(",")[0]
+    .trim();
+  return forwarded || String(request.socket.remoteAddress ?? "unknown");
 }
 
 function extractJsonTokens(text) {
@@ -188,7 +194,7 @@ function extractSseTokens(text) {
 
 function setCorsHeaders(response) {
   response.setHeader("Access-Control-Allow-Origin", "*");
-  response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Cogno-Device-Id");
+  response.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
   response.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
 }
 

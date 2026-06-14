@@ -25,6 +25,8 @@ class NativeNoteRepository(context: Context) {
             preview = preview(safeContent),
             sourceSessionId = null,
             sourceMessageCount = 0,
+            sourceLastMessageCreatedAt = 0L,
+            sourceMessageRevision = 0L,
             pinned = false,
             createdAt = now,
             updatedAt = now

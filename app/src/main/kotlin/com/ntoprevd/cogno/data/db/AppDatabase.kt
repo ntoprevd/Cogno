@@ -25,7 +25,7 @@ import com.ntoprevd.cogno.data.db.entity.TopicEntity
         TopicEntity::class,
         NoteTopicSegmentEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 @TypeConverters(Converters::class)
@@ -51,20 +51,26 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     DATABASE_NAME
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(
+                        MIGRATION_1_2,
+                        MIGRATION_2_3,
+                        MIGRATION_3_4,
+                        MIGRATION_4_5,
+                        MIGRATION_5_6
+                    )
                     .build()
                     .also { instance = it }
             }
         }
 
-        private val MIGRATION_1_2 = object : Migration(1, 2) {
+        internal val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // 记录用户对 assistant 回复的反馈；历史消息默认没有反馈。
                 db.execSQL("ALTER TABLE messages ADD COLUMN feedback TEXT")
             }
         }
 
-        private val MIGRATION_2_3 = object : Migration(2, 3) {
+        internal val MIGRATION_2_3 = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // 基础笔记库：由会话生成 Markdown 笔记并保存到本地。
                 db.execSQL(
@@ -85,7 +91,7 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private val MIGRATION_3_4 = object : Migration(3, 4) {
+        internal val MIGRATION_3_4 = object : Migration(3, 4) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // 主题只保存分类规则；笔记正文仍是按对话生成的唯一底稿。
                 db.execSQL(
@@ -116,11 +122,25 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        private val MIGRATION_4_5 = object : Migration(4, 5) {
+        internal val MIGRATION_4_5 = object : Migration(4, 5) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 // 图片文件保存在应用私有目录，消息表只记录可持久恢复的路径和 MIME 类型。
                 db.execSQL("ALTER TABLE messages ADD COLUMN image_path TEXT")
                 db.execSQL("ALTER TABLE messages ADD COLUMN image_mime_type TEXT")
+            }
+        }
+
+        internal val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // 旧笔记在下次生成时完整校准；新字段用于识别新增、编辑和删除消息。
+                db.execSQL(
+                    "ALTER TABLE notes ADD COLUMN source_last_message_created_at " +
+                        "INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE notes ADD COLUMN source_message_revision " +
+                        "INTEGER NOT NULL DEFAULT 0"
+                )
             }
         }
     }

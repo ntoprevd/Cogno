@@ -3,6 +3,7 @@ package com.ntoprevd.cogno.ui.chat
 import android.app.Application
 import android.net.Uri
 import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.viewModelScope
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
 import com.ntoprevd.cogno.data.db.entity.SessionEntity
@@ -38,19 +39,32 @@ data class ChatUiState(
         get() = currentSessionId == null || messages.isEmpty()
 }
 
-class ChatViewModel(application: Application) : AndroidViewModel(application) {
+class ChatViewModel(
+    application: Application,
+    private val savedStateHandle: SavedStateHandle
+) : AndroidViewModel(application) {
     private val repository = NativeChatRepository(application.applicationContext)
 
-    private val _uiState = MutableStateFlow(ChatUiState())
+    private val _uiState = MutableStateFlow(
+        ChatUiState(
+            currentSessionId = savedStateHandle.get<String>(KEY_CURRENT_SESSION_ID),
+            inputText = savedStateHandle.get<String>(KEY_INPUT_TEXT).orEmpty()
+        )
+    )
     val uiState: StateFlow<ChatUiState> = _uiState.asStateFlow()
 
     private var messagesJob: Job? = null
 
     init {
-        observeSessions()
+        viewModelScope.launch {
+            repository.recoverInterruptedReplies()
+            observeSessions()
+        }
+        uiState.value.currentSessionId?.let(::observeMessages)
     }
 
     fun onInputChange(value: String) {
+        savedStateHandle[KEY_INPUT_TEXT] = value
         _uiState.update { it.copy(inputText = value) }
     }
 
@@ -68,6 +82,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startNewSession() {
         messagesJob?.cancel()
+        savedStateHandle[KEY_CURRENT_SESSION_ID] = null
+        savedStateHandle[KEY_INPUT_TEXT] = ""
         _uiState.update {
             it.copy(
                 currentSessionId = null,
@@ -81,6 +97,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectSession(sessionId: String) {
         observeMessages(sessionId)
+        savedStateHandle[KEY_CURRENT_SESSION_ID] = sessionId
         _uiState.update {
             it.copy(
                 currentSessionId = sessionId,
@@ -103,6 +120,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 repository.beginUserMessage(uiState.value.currentSessionId, content, imageUri)
             }.onSuccess { result ->
                 observeMessages(result.session.id)
+                savedStateHandle[KEY_CURRENT_SESSION_ID] = result.session.id
+                savedStateHandle[KEY_INPUT_TEXT] = ""
                 _uiState.update {
                     it.copy(
                         currentSessionId = result.session.id,
@@ -155,6 +174,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             repository.deleteSession(sessionId)
             _uiState.update {
                 if (it.currentSessionId == sessionId) {
+                    savedStateHandle[KEY_CURRENT_SESSION_ID] = null
                     it.copy(currentSessionId = null, messages = emptyList(), errorMessage = null)
                 } else {
                     it
@@ -276,11 +296,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private fun observeSessions() {
-        viewModelScope.launch {
-            repository.observeSessions().collect { sessions ->
-                _uiState.update { it.copy(sessions = sessions) }
-            }
+    private suspend fun observeSessions() {
+        repository.observeSessions().collect { sessions ->
+            _uiState.update { it.copy(sessions = sessions) }
         }
     }
 
@@ -291,6 +309,11 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { it.copy(messages = messages) }
             }
         }
+    }
+
+    companion object {
+        private const val KEY_CURRENT_SESSION_ID = "current_session_id"
+        private const val KEY_INPUT_TEXT = "input_text"
     }
 }
 

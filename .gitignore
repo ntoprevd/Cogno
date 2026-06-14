@@ -2,6 +2,7 @@
 
 # Gradle 构建系统
 .gradle/
+.gradle-codex/
 gradle-app.setting
 build/
 */build/

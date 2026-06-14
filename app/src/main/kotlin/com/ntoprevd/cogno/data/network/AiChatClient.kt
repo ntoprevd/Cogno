@@ -3,7 +3,6 @@ package com.ntoprevd.cogno.data.network
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
-import android.provider.Settings
 import android.util.Base64
 import com.ntoprevd.cogno.BuildConfig
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
@@ -15,7 +14,6 @@ import java.io.IOException
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -29,19 +27,15 @@ import kotlin.math.roundToInt
 
 class AiChatClient(context: Context) {
     private val appContext = context.applicationContext
-    private val deviceId = Settings.Secure.getString(
-        appContext.contentResolver,
-        Settings.Secure.ANDROID_ID
-    ).orEmpty()
     private val client = OkHttpClient.Builder()
         .connectTimeout(20, TimeUnit.SECONDS)
         .readTimeout(90, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
         .build()
-    private val activeStreamingCall = AtomicReference<Call?>(null)
+    private val streamingCalls = StreamingCallController()
 
     fun cancelStreamingRequest() {
-        activeStreamingCall.getAndSet(null)?.cancel()
+        streamingCalls.cancel()
     }
 
     suspend fun requestChatCompletion(
@@ -91,7 +85,7 @@ class AiChatClient(context: Context) {
             .build()
 
         val call = client.newCall(request)
-        activeStreamingCall.set(call)
+        streamingCalls.register(call)
         try {
             call.execute().use { response ->
             if (!response.isSuccessful) {
@@ -108,24 +102,10 @@ class AiChatClient(context: Context) {
                 if (!line.startsWith(SSE_DATA_PREFIX)) continue
 
                 val data = line.removePrefix(SSE_DATA_PREFIX).trim()
-                if (data == SSE_DONE_MARKER) break
-                if (data.isBlank()) continue
-
-                val chunk = runCatching { JSONObject(data) }.getOrNull() ?: continue
-                val usage = chunk.optJSONObject("usage")
-                if (usage?.has("total_tokens") == true) {
-                    totalTokens = usage.optInt("total_tokens")
-                }
-
-                val delta = chunk
-                    .optJSONArray("choices")
-                    ?.optJSONObject(0)
-                    ?.optJSONObject("delta")
-                if (delta == null || !delta.has("content") || delta.isNull("content")) continue
-
-                val contentDelta = delta.getString("content")
-                    .takeIf { it.isNotEmpty() }
-                    ?: continue
+                val event = parseSseData(data) ?: continue
+                if (event.done) break
+                event.totalTokens?.let { totalTokens = it }
+                val contentDelta = event.content ?: continue
 
                 contentBuilder.append(contentDelta)
                 onContentDelta(contentDelta)
@@ -141,7 +121,7 @@ class AiChatClient(context: Context) {
             if (call.isCanceled()) throw AiRequestCancelledException()
             throw error
         } finally {
-            activeStreamingCall.compareAndSet(call, null)
+            streamingCalls.clear(call)
         }
     }
 
@@ -210,7 +190,6 @@ class AiChatClient(context: Context) {
         val request = Request.Builder()
             .url("${BuildConfig.EXPERIENCE_API_BASE_URL.trimEnd('/')}/models")
             .addHeader("Content-Type", JSON_MEDIA_TYPE.toString())
-            .addHeader("X-Cogno-Device-Id", deviceId)
             .apply {
                 if (BuildConfig.EXPERIENCE_APP_TOKEN.isNotBlank()) {
                     addHeader("Authorization", "Bearer ${BuildConfig.EXPERIENCE_APP_TOKEN}")
@@ -438,8 +417,6 @@ class AiChatClient(context: Context) {
             .url("${baseUrl.trimEnd('/')}/$path")
             .addHeader("Content-Type", JSON_MEDIA_TYPE.toString())
             .apply {
-                // A stable identifier is only needed by Cogno's own experience service.
-                if (experienceMode) addHeader("X-Cogno-Device-Id", deviceId)
                 if (token.isNotBlank()) addHeader("Authorization", "Bearer $token")
             }
     }
@@ -605,3 +582,69 @@ data class ExperienceModel(
 class AiChatException(message: String, cause: Throwable? = null) : IOException(message, cause)
 
 class AiRequestCancelledException : IOException("Generation cancelled")
+
+internal class StreamingCallController {
+    private val lock = Any()
+    private var activeCall: Call? = null
+    private var cancelNextCall = false
+
+    fun register(call: Call) {
+        synchronized(lock) {
+            activeCall = call
+            if (cancelNextCall) {
+                cancelNextCall = false
+                call.cancel()
+            }
+        }
+    }
+
+    fun cancel() {
+        synchronized(lock) {
+            val call = activeCall
+            if (call == null) {
+                // Covers a stop tap after message persistence but before OkHttp creates the Call.
+                cancelNextCall = true
+            } else {
+                call.cancel()
+            }
+        }
+    }
+
+    fun clear(call: Call) {
+        synchronized(lock) {
+            if (activeCall === call) activeCall = null
+        }
+    }
+}
+
+internal data class SseEvent(
+    val content: String? = null,
+    val totalTokens: Int? = null,
+    val done: Boolean = false
+)
+
+internal fun parseSseData(data: String): SseEvent? {
+    if (data.isBlank()) return null
+    if (data == "[DONE]") return SseEvent(done = true)
+    val chunk = runCatching { JSONObject(data) }.getOrNull() ?: return null
+    val usage = chunk.optJSONObject("usage")
+    val totalTokens = if (usage?.has("total_tokens") == true) {
+        usage.optInt("total_tokens")
+    } else {
+        null
+    }
+    val delta = chunk
+        .optJSONArray("choices")
+        ?.optJSONObject(0)
+        ?.optJSONObject("delta")
+    val content = if (
+        delta != null &&
+        delta.has("content") &&
+        !delta.isNull("content")
+    ) {
+        delta.optString("content").takeIf(String::isNotEmpty)
+    } else {
+        null
+    }
+    return SseEvent(content = content, totalTokens = totalTokens)
+}

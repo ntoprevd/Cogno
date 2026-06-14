@@ -17,6 +17,7 @@ data class StoredChatImage(
 
 class ChatImageStore(context: Context) {
     private val appContext = context.applicationContext
+    private val imageDirectory = File(appContext.filesDir, IMAGE_DIRECTORY)
 
     suspend fun storeCompressed(uri: Uri): StoredChatImage = withContext(Dispatchers.IO) {
         val source = ImageDecoder.createSource(appContext.contentResolver, uri)
@@ -34,7 +35,7 @@ class ChatImageStore(context: Context) {
             decoder.allocator = ImageDecoder.ALLOCATOR_SOFTWARE
         }
 
-        val imageDirectory = File(appContext.filesDir, IMAGE_DIRECTORY).apply { mkdirs() }
+        imageDirectory.mkdirs()
         val outputFile = File(imageDirectory, "${UUID.randomUUID()}.jpg")
         try {
             FileOutputStream(outputFile).use { output ->
@@ -53,6 +54,15 @@ class ChatImageStore(context: Context) {
             path = outputFile.absolutePath,
             mimeType = JPEG_MIME_TYPE
         )
+    }
+
+    fun deleteStored(path: String?) {
+        if (path.isNullOrBlank()) return
+        val target = runCatching { File(path).canonicalFile }.getOrNull() ?: return
+        val root = runCatching { imageDirectory.canonicalFile }.getOrNull() ?: return
+        if (target.parentFile == root && target.isFile) {
+            target.delete()
+        }
     }
 
     companion object {

@@ -8,6 +8,8 @@ import com.ntoprevd.cogno.data.db.dao.MessageDao
 import com.ntoprevd.cogno.data.db.dao.SessionDao
 import com.ntoprevd.cogno.data.db.entity.MessageEntity
 import com.ntoprevd.cogno.data.db.entity.SessionEntity
+import com.ntoprevd.cogno.data.media.ChatImageStore
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -126,6 +128,131 @@ class AppDatabaseInstrumentedTest {
         assertEquals(listOf("message-1", "message-2"), remaining.map { it.id })
     }
 
+    @Test
+    fun interruptedAssistantMessages_areMarkedFailed() = runBlocking {
+        sessionDao.insertSession(session("session-interrupted", "Interrupted", false, 100L))
+        messageDao.insertMessages(
+            listOf(
+                message(
+                    id = "message-pending",
+                    sessionId = "session-interrupted",
+                    role = "assistant",
+                    content = "",
+                    createdAt = 100L,
+                    status = "pending"
+                ),
+                message(
+                    id = "message-streaming",
+                    sessionId = "session-interrupted",
+                    role = "assistant",
+                    content = "Partial",
+                    createdAt = 200L,
+                    status = "streaming"
+                )
+            )
+        )
+
+        val updated = messageDao.markInterruptedAssistantMessagesFailed("Interrupted", 300L)
+
+        assertEquals(2, updated)
+        assertEquals("Interrupted", messageDao.getMessageById("message-pending")?.content)
+        assertEquals("failed", messageDao.getMessageById("message-pending")?.status)
+        assertEquals("Partial", messageDao.getMessageById("message-streaming")?.content)
+        assertEquals("failed", messageDao.getMessageById("message-streaming")?.status)
+    }
+
+    @Test
+    fun chatImageStore_onlyDeletesFilesInsideManagedDirectory() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val imageDirectory = File(context.filesDir, "chat_images").apply { mkdirs() }
+        val managedFile = File(imageDirectory, "managed-test.jpg").apply { writeText("image") }
+        val outsideFile = File(context.filesDir, "outside-test.jpg").apply { writeText("keep") }
+        val store = ChatImageStore(context)
+
+        try {
+            store.deleteStored(outsideFile.absolutePath)
+            store.deleteStored(managedFile.absolutePath)
+
+            assertEquals(true, outsideFile.exists())
+            assertEquals(false, managedFile.exists())
+        } finally {
+            if (managedFile.exists()) managedFile.delete()
+            if (outsideFile.exists()) outsideFile.delete()
+        }
+    }
+
+    @Test
+    fun migrateVersion1To6_preservesDataAndCreatesCurrentSchema() = runBlocking {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val databaseName = "migration-1-to-6.db"
+        context.deleteDatabase(databaseName)
+
+        context.openOrCreateDatabase(databaseName, Context.MODE_PRIVATE, null).use { legacyDb ->
+            legacyDb.execSQL(
+                "CREATE TABLE sessions (" +
+                    "id TEXT NOT NULL PRIMARY KEY, title TEXT NOT NULL, model_id TEXT, " +
+                    "pinned INTEGER NOT NULL, archived INTEGER NOT NULL, created_at INTEGER NOT NULL, " +
+                    "updated_at INTEGER NOT NULL, last_message_preview TEXT)"
+            )
+            legacyDb.execSQL("CREATE INDEX index_sessions_updated_at ON sessions(updated_at)")
+            legacyDb.execSQL("CREATE INDEX index_sessions_pinned_updated_at ON sessions(pinned, updated_at)")
+            legacyDb.execSQL(
+                "CREATE TABLE messages (" +
+                    "id TEXT NOT NULL PRIMARY KEY, session_id TEXT NOT NULL, role TEXT NOT NULL, " +
+                    "content TEXT NOT NULL, status TEXT NOT NULL, error_code TEXT, token_count INTEGER, " +
+                    "created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL, " +
+                    "FOREIGN KEY(session_id) REFERENCES sessions(id) ON UPDATE NO ACTION ON DELETE CASCADE)"
+            )
+            legacyDb.execSQL(
+                "CREATE INDEX index_messages_session_id_created_at " +
+                    "ON messages(session_id, created_at)"
+            )
+            legacyDb.execSQL("CREATE INDEX index_messages_status ON messages(status)")
+            legacyDb.execSQL(
+                "INSERT INTO sessions VALUES " +
+                    "('legacy-session', 'Legacy', 'deepseek-v3', 0, 0, 100, 100, 'Hello')"
+            )
+            legacyDb.execSQL(
+                "INSERT INTO messages VALUES " +
+                    "('legacy-message', 'legacy-session', 'user', 'Hello', 'completed', NULL, NULL, 100, 100)"
+            )
+            legacyDb.version = 1
+        }
+
+        val migratedDb = Room.databaseBuilder(context, AppDatabase::class.java, databaseName)
+            .addMigrations(
+                AppDatabase.MIGRATION_1_2,
+                AppDatabase.MIGRATION_2_3,
+                AppDatabase.MIGRATION_3_4,
+                AppDatabase.MIGRATION_4_5,
+                AppDatabase.MIGRATION_5_6
+            )
+            .allowMainThreadQueries()
+            .build()
+        try {
+            assertEquals("Legacy", migratedDb.sessionDao().getSessionById("legacy-session")?.title)
+            val message = migratedDb.messageDao().getMessageById("legacy-message")
+            assertEquals("Hello", message?.content)
+            assertNull(message?.feedback)
+            assertNull(message?.imagePath)
+            assertNull(message?.imageMimeType)
+            val migratedNoteColumns = migratedDb.openHelper.readableDatabase
+                .query("PRAGMA table_info(notes)")
+                .use { cursor ->
+                    buildSet {
+                        val nameIndex = cursor.getColumnIndexOrThrow("name")
+                        while (cursor.moveToNext()) add(cursor.getString(nameIndex))
+                    }
+                }
+            assertEquals(true, "source_last_message_created_at" in migratedNoteColumns)
+            assertEquals(true, "source_message_revision" in migratedNoteColumns)
+            assertEquals(6, migratedDb.openHelper.readableDatabase.version)
+        } finally {
+            migratedDb.close()
+            context.deleteDatabase(databaseName)
+        }
+    }
+
     private fun session(id: String, title: String, pinned: Boolean, updatedAt: Long): SessionEntity {
         return SessionEntity(
             id,
@@ -144,14 +271,15 @@ class AppDatabaseInstrumentedTest {
         sessionId: String,
         role: String,
         content: String,
-        createdAt: Long
+        createdAt: Long,
+        status: String = "completed"
     ): MessageEntity {
         return MessageEntity(
             id,
             sessionId,
             role,
             content,
-            "completed",
+            status,
             null,
             null,
             null,

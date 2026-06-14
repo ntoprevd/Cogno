@@ -116,6 +116,11 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
@@ -1567,6 +1572,55 @@ private fun ChatInputBar(
         }
     }
 
+    fun startVoiceInput(): Boolean {
+        if (
+            voiceState.phase == VoiceInputPhase.LISTENING ||
+            voiceState.phase == VoiceInputPhase.PROCESSING
+        ) {
+            return false
+        }
+        if (
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) != PackageManager.PERMISSION_GRANTED
+        ) {
+            microphonePermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return false
+        }
+        if (speechRecognizer == null) {
+            voiceState = VoiceInputState(
+                phase = VoiceInputPhase.MESSAGE,
+                detail = copy.voiceUnavailable
+            )
+            return false
+        }
+
+        cancellationRequested = false
+        latestPartialResult = ""
+        voiceState = VoiceInputState(
+            phase = VoiceInputPhase.LISTENING,
+            detail = copy.voiceReleaseToFinish
+        )
+        return runCatching {
+            speechRecognizer.start(speechRecognitionLanguageTag(languagePreference))
+        }.onFailure {
+            voiceState = VoiceInputState(
+                phase = VoiceInputPhase.MESSAGE,
+                detail = copy.voiceFailed
+            )
+        }.isSuccess
+    }
+
+    fun finishVoiceInput() {
+        if (voiceState.phase != VoiceInputPhase.LISTENING) return
+        voiceState = VoiceInputState(
+            phase = VoiceInputPhase.PROCESSING,
+            detail = copy.voiceProcessing
+        )
+        speechRecognizer?.stop()
+    }
+
     fun cancelVoiceInput() {
         cancellationRequested = true
         latestPartialResult = ""
@@ -1622,6 +1676,7 @@ private fun ChatInputBar(
                 PendingAttachmentRow(
                     attachment = attachment,
                     message = copy.attachmentPending,
+                    removeDescription = copy.cancel,
                     isDark = isDark,
                     onRemove = onRemoveAttachment
                 )
@@ -1672,53 +1727,26 @@ private fun ChatInputBar(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(48.dp)
                             .clip(CircleShape)
+                            .semantics {
+                                role = Role.Button
+                                contentDescription = copy.voiceInput
+                                onClick(label = copy.voiceInput) {
+                                    if (voiceState.phase == VoiceInputPhase.LISTENING) {
+                                        finishVoiceInput()
+                                    } else {
+                                        startVoiceInput()
+                                    }
+                                    true
+                                }
+                            }
                             .pointerInput(speechRecognizer, languagePreference) {
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false)
                                     val longPress = awaitLongPressOrCancellation(down.id)
                                     if (longPress != null) {
-                                        when {
-                                            voiceState.phase == VoiceInputPhase.LISTENING ||
-                                                voiceState.phase == VoiceInputPhase.PROCESSING -> Unit
-
-                                            ContextCompat.checkSelfPermission(
-                                                context,
-                                                Manifest.permission.RECORD_AUDIO
-                                            ) != PackageManager.PERMISSION_GRANTED -> {
-                                                microphonePermissionLauncher.launch(
-                                                    Manifest.permission.RECORD_AUDIO
-                                                )
-                                            }
-
-                                            speechRecognizer == null -> {
-                                                voiceState = VoiceInputState(
-                                                    phase = VoiceInputPhase.MESSAGE,
-                                                    detail = copy.voiceUnavailable
-                                                )
-                                            }
-
-                                            else -> {
-                                                cancellationRequested = false
-                                                latestPartialResult = ""
-                                                voiceState = VoiceInputState(
-                                                    phase = VoiceInputPhase.LISTENING,
-                                                    detail = copy.voiceReleaseToFinish
-                                                )
-                                                val started = runCatching {
-                                                    speechRecognizer.start(
-                                                        speechRecognitionLanguageTag(
-                                                            languagePreference
-                                                        )
-                                                    )
-                                                }.isSuccess
-                                                if (!started) {
-                                                    voiceState = VoiceInputState(
-                                                        phase = VoiceInputPhase.MESSAGE,
-                                                        detail = copy.voiceFailed
-                                                    )
-                                                } else {
+                                        if (startVoiceInput()) {
                                                     var shouldCancel = false
                                                     var gestureEnded = false
                                                     while (!gestureEnded) {
@@ -1749,16 +1777,10 @@ private fun ChatInputBar(
                                                         }
                                                     }
                                                     if (!shouldCancel) {
-                                                        voiceState = VoiceInputState(
-                                                            phase = VoiceInputPhase.PROCESSING,
-                                                            detail = copy.voiceProcessing
-                                                        )
-                                                        speechRecognizer.stop()
+                                                        finishVoiceInput()
                                                     } else {
                                                         cancelVoiceInput()
                                                     }
-                                                }
-                                            }
                                         }
                                     }
                                 }
@@ -1767,7 +1789,7 @@ private fun ChatInputBar(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Mic,
-                            contentDescription = copy.voiceInput,
+                            contentDescription = null,
                             tint = if (
                                 voiceState.phase == VoiceInputPhase.LISTENING ||
                                 voiceState.phase == VoiceInputPhase.PROCESSING
@@ -1813,6 +1835,7 @@ private fun ChatInputBar(
 private fun PendingAttachmentRow(
     attachment: PendingAttachment,
     message: String,
+    removeDescription: String,
     isDark: Boolean,
     onRemove: () -> Unit
 ) {
@@ -1858,7 +1881,7 @@ private fun PendingAttachmentRow(
         IconButton(onClick = onRemove, modifier = Modifier.size(32.dp)) {
             Icon(
                 imageVector = Icons.Default.Close,
-                contentDescription = null,
+                contentDescription = removeDescription,
                 tint = CognoMuted,
                 modifier = Modifier.size(17.dp)
             )

@@ -8,4 +8,7 @@
 <full-backup-content>
     <!-- API credentials are device-bound and must never enter cloud backups. -->
     <exclude domain="sharedpref" path="cogno_ai_settings.xml"/>
+    <!-- Conversations, notes and attached images remain local unless the user exports them. -->
+    <exclude domain="database" path="cogno.db"/>
+    <exclude domain="file" path="chat_images"/>
 </full-backup-content>

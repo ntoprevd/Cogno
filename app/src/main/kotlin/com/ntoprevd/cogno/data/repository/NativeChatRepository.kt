@@ -67,11 +67,20 @@ class NativeChatRepository(context: Context) {
     }
 
     suspend fun deleteSession(sessionId: String) {
+        val imagePaths = messageDao.getImagePathsBySessionId(sessionId)
         sessionDao.deleteSessionById(sessionId)
+        imagePaths.forEach(chatImageStore::deleteStored)
     }
 
     fun cancelAssistantReply() {
         aiChatClient.cancelStreamingRequest()
+    }
+
+    suspend fun recoverInterruptedReplies(): Int {
+        return messageDao.markInterruptedAssistantMessagesFailed(
+            emptyMessage = "上次生成意外中断，请重新生成。",
+            updatedAt = System.currentTimeMillis()
+        )
     }
 
     suspend fun beginUserMessage(
@@ -83,76 +92,81 @@ class NativeChatRepository(context: Context) {
         val settings = settingsStore.load()
         val storedImage = imageUri?.let { chatImageStore.storeCompressed(it) }
         val messagePreview = content.ifBlank { if (storedImage != null) IMAGE_PREVIEW else "" }
-        return database.withTransaction {
-            val targetSession = if (sessionId.isNullOrBlank()) {
-                SessionEntity(
-                    UUID.randomUUID().toString(),
-                    buildTitle(messagePreview),
+        return try {
+            database.withTransaction {
+                val targetSession = if (sessionId.isNullOrBlank()) {
+                    SessionEntity(
+                        UUID.randomUUID().toString(),
+                        buildTitle(messagePreview),
+                        settings.modelId,
+                        false,
+                        false,
+                        now,
+                        now,
+                        null
+                    ).also { sessionDao.insertSession(it) }
+                } else {
+                    sessionDao.getSessionById(sessionId) ?: SessionEntity(
+                        sessionId,
+                        buildTitle(messagePreview),
+                        settings.modelId,
+                        false,
+                        false,
+                        now,
+                        now,
+                        null
+                    ).also { sessionDao.insertSession(it) }
+                }
+
+                val message = MessageEntity(
+                    id = UUID.randomUUID().toString(),
+                    sessionId = targetSession.id,
+                    role = ROLE_USER,
+                    content = content,
+                    status = STATUS_COMPLETED,
+                    errorCode = null,
+                    tokenCount = null,
+                    feedback = null,
+                    imagePath = storedImage?.path,
+                    imageMimeType = storedImage?.mimeType,
+                    createdAt = now,
+                    updatedAt = now
+                )
+                messageDao.insertMessage(message)
+
+                val assistantMessage = MessageEntity(
+                    id = UUID.randomUUID().toString(),
+                    sessionId = targetSession.id,
+                    role = ROLE_ASSISTANT,
+                    content = "",
+                    status = STATUS_PENDING,
+                    errorCode = null,
+                    tokenCount = null,
+                    feedback = null,
+                    imagePath = null,
+                    imageMimeType = null,
+                    createdAt = now + 1,
+                    updatedAt = now + 1
+                )
+                messageDao.insertMessage(assistantMessage)
+
+                // Keep the session preview consistent with the new user message.
+                val updatedSession = SessionEntity(
+                    targetSession.id,
+                    targetSession.title,
                     settings.modelId,
-                    false,
-                    false,
+                    targetSession.pinned,
+                    targetSession.archived,
+                    targetSession.createdAt,
                     now,
-                    now,
-                    null
-                ).also { sessionDao.insertSession(it) }
-            } else {
-                sessionDao.getSessionById(sessionId) ?: SessionEntity(
-                    sessionId,
-                    buildTitle(messagePreview),
-                    settings.modelId,
-                    false,
-                    false,
-                    now,
-                    now,
-                    null
-                ).also { sessionDao.insertSession(it) }
+                    preview(messagePreview)
+                )
+                sessionDao.updateSession(updatedSession)
+                PendingAssistantResult(updatedSession, message, assistantMessage)
             }
-
-            val message = MessageEntity(
-                id = UUID.randomUUID().toString(),
-                sessionId = targetSession.id,
-                role = ROLE_USER,
-                content = content,
-                status = STATUS_COMPLETED,
-                errorCode = null,
-                tokenCount = null,
-                feedback = null,
-                imagePath = storedImage?.path,
-                imageMimeType = storedImage?.mimeType,
-                createdAt = now,
-                updatedAt = now
-            )
-            messageDao.insertMessage(message)
-
-            val assistantMessage = MessageEntity(
-                id = UUID.randomUUID().toString(),
-                sessionId = targetSession.id,
-                role = ROLE_ASSISTANT,
-                content = "",
-                status = STATUS_PENDING,
-                errorCode = null,
-                tokenCount = null,
-                feedback = null,
-                imagePath = null,
-                imageMimeType = null,
-                createdAt = now + 1,
-                updatedAt = now + 1
-            )
-            messageDao.insertMessage(assistantMessage)
-
-            // Keep the session preview consistent with the new user message.
-            val updatedSession = SessionEntity(
-                targetSession.id,
-                targetSession.title,
-                settings.modelId,
-                targetSession.pinned,
-                targetSession.archived,
-                targetSession.createdAt,
-                now,
-                preview(messagePreview)
-            )
-            sessionDao.updateSession(updatedSession)
-            PendingAssistantResult(updatedSession, message, assistantMessage)
+        } catch (error: Throwable) {
+            chatImageStore.deleteStored(storedImage?.path)
+            throw error
         }
     }
 
@@ -190,6 +204,7 @@ class NativeChatRepository(context: Context) {
     suspend fun updateUserMessageAndRegenerate(messageId: String, content: String): Boolean {
         val trimmed = content.trim()
         if (trimmed.isBlank()) return false
+        var removedImagePaths = emptyList<String>()
         val result = database.withTransaction {
             val message = messageDao.getMessageById(messageId) ?: return@withTransaction null
             if (message.role != ROLE_USER) return@withTransaction null
@@ -201,9 +216,14 @@ class NativeChatRepository(context: Context) {
             message.updatedAt = System.currentTimeMillis()
             messageDao.updateMessage(message)
             // Editing history creates a new branch; stale replies after this pair are removed.
+            removedImagePaths = messageDao.getImagePathsAfter(
+                message.sessionId,
+                assistantMessage.createdAt
+            )
             messageDao.deleteMessagesAfter(message.sessionId, assistantMessage.createdAt)
             message to assistantMessage
         } ?: return false
+        removedImagePaths.forEach(chatImageStore::deleteStored)
         val (message, assistantMessage) = result
         regenerateAssistantReply(message.sessionId, assistantMessage.id)
         return true
@@ -227,56 +247,68 @@ class NativeChatRepository(context: Context) {
             assistantMessage.createdAt,
             DEFAULT_MESSAGE_LIMIT
         ).filter { it.status == STATUS_COMPLETED }
+        val removedImagePaths = messageDao.getImagePathsAfter(sessionId, assistantMessage.createdAt)
         messageDao.deleteMessagesAfter(sessionId, assistantMessage.createdAt)
+        removedImagePaths.forEach(chatImageStore::deleteStored)
         streamAssistantReply(sessionId, assistantMessageId, messages)
     }
 
     suspend fun generateNoteFromSession(sessionId: String, style: String): GeneratedNoteResult {
         val session = sessionDao.getSessionById(sessionId)
             ?: throw IllegalStateException("请先选择一个会话")
-        val messages = getMessages(sessionId)
-            .filter {
-                it.status == STATUS_COMPLETED &&
-                    (it.content.isNotBlank() || !it.imagePath.isNullOrBlank())
-            }
+        val messages = messageDao.getCompletedMessagesForNote(sessionId)
         if (messages.isEmpty()) {
             throw IllegalStateException("当前会话还没有可总结的内容")
         }
 
         val existingNote = noteDao.getLatestNoteBySourceSessionId(sessionId)
-        if (existingNote != null && existingNote.sourceMessageCount >= messages.size) {
+        val syncPlan = noteSyncPlan(existingNote, messages)
+        if (existingNote != null && syncPlan.mode == NoteSyncMode.UP_TO_DATE) {
             return GeneratedNoteResult(existingNote, GeneratedNoteResult.UP_TO_DATE)
         }
 
         val settings = settingsStore.load()
         val topicNames = topicRepository.enabledTopics().map { it.name }
-        val messagesToSummarize = if (existingNote == null) {
-            messages
-        } else {
-            messages.drop(existingNote.sourceMessageCount.coerceAtMost(messages.size))
-        }
+        val messagesToSummarize = syncPlan.messages
         val draft = aiChatClient.requestNoteDraft(
             settings = settings,
             conversationTitle = session.title,
             conversationText = buildConversationText(messagesToSummarize),
             style = style,
-            existingContent = existingNote?.content,
+            existingContent = existingNote?.content?.takeIf {
+                syncPlan.mode == NoteSyncMode.APPEND
+            },
             topicNames = topicNames
         )
         val now = System.currentTimeMillis()
         if (existingNote != null) {
-            val appendedContent = draft.content.trim()
-            existingNote.content = appendNoteContent(existingNote.content, appendedContent)
+            val generatedContent = draft.content.trim()
+            existingNote.content = if (syncPlan.mode == NoteSyncMode.APPEND) {
+                appendNoteContent(existingNote.content, generatedContent)
+            } else {
+                generatedContent
+            }
             existingNote.preview = preview(markdownPlainText(existingNote.content))
             existingNote.sourceMessageCount = messages.size
+            existingNote.sourceLastMessageCreatedAt = syncPlan.lastMessageCreatedAt
+            existingNote.sourceMessageRevision = syncPlan.messageRevision
             existingNote.updatedAt = now
             noteDao.updateNote(existingNote)
-            topicRepository.syncSegments(
-                note = existingNote,
-                aiSegments = draft.segments,
-                fallbackContent = appendedContent,
-                sourceMessageCount = messages.size
-            )
+            if (syncPlan.mode == NoteSyncMode.APPEND) {
+                topicRepository.syncSegments(
+                    note = existingNote,
+                    aiSegments = draft.segments,
+                    fallbackContent = generatedContent,
+                    sourceMessageCount = messages.size
+                )
+            } else {
+                topicRepository.replaceSegments(
+                    note = existingNote,
+                    aiSegments = draft.segments,
+                    fallbackContent = generatedContent,
+                    sourceMessageCount = messages.size
+                )
+            }
             return GeneratedNoteResult(existingNote, GeneratedNoteResult.UPDATED)
         }
 
@@ -287,6 +319,8 @@ class NativeChatRepository(context: Context) {
             preview = preview(markdownPlainText(draft.content)),
             sourceSessionId = sessionId,
             sourceMessageCount = messages.size,
+            sourceLastMessageCreatedAt = syncPlan.lastMessageCreatedAt,
+            sourceMessageRevision = syncPlan.messageRevision,
             pinned = false,
             createdAt = now,
             updatedAt = now
@@ -351,7 +385,12 @@ class NativeChatRepository(context: Context) {
             }
         }.onFailure { error ->
             val assistantMessage = messageDao.getMessageById(assistantMessageId) ?: return
-            if (error is AiRequestCancelledException && streamedContent.isNotBlank()) {
+            if (error is AiRequestCancelledException) {
+                if (streamedContent.isBlank()) {
+                    // Stopping before the first token should not leave an empty failed reply.
+                    messageDao.deleteMessageById(assistantMessageId)
+                    return@onFailure
+                }
                 assistantMessage.content = streamedContent.toString()
                 assistantMessage.status = STATUS_COMPLETED
                 assistantMessage.errorCode = null
@@ -417,4 +456,55 @@ internal fun appendNoteContent(existingContent: String, appendedContent: String)
     if (addition.isBlank()) return existing
     if (existing.isBlank()) return addition
     return "$existing\n\n$addition"
+}
+
+internal enum class NoteSyncMode {
+    UP_TO_DATE,
+    APPEND,
+    REBUILD
+}
+
+internal data class NoteSyncPlan(
+    val mode: NoteSyncMode,
+    val messages: List<MessageEntity>,
+    val lastMessageCreatedAt: Long,
+    val messageRevision: Long
+)
+
+internal fun noteSyncPlan(
+    existingNote: NoteEntity?,
+    messages: List<MessageEntity>
+): NoteSyncPlan {
+    val lastCreatedAt = messages.maxOfOrNull { it.createdAt } ?: 0L
+    val revision = messages.maxOfOrNull { it.updatedAt } ?: 0L
+    if (existingNote == null) {
+        return NoteSyncPlan(NoteSyncMode.REBUILD, messages, lastCreatedAt, revision)
+    }
+
+    val exactMatch =
+        existingNote.sourceMessageCount == messages.size &&
+            existingNote.sourceLastMessageCreatedAt == lastCreatedAt &&
+            existingNote.sourceMessageRevision == revision
+    if (exactMatch) {
+        return NoteSyncPlan(NoteSyncMode.UP_TO_DATE, emptyList(), lastCreatedAt, revision)
+    }
+
+    val oldMessages = messages.filter {
+        it.createdAt <= existingNote.sourceLastMessageCreatedAt
+    }
+    val oldRevision = oldMessages.maxOfOrNull { it.updatedAt } ?: 0L
+    val canAppend =
+        existingNote.sourceMessageRevision > 0L &&
+            messages.size > existingNote.sourceMessageCount &&
+            oldMessages.size == existingNote.sourceMessageCount &&
+            oldRevision <= existingNote.sourceMessageRevision
+    if (canAppend) {
+        return NoteSyncPlan(
+            mode = NoteSyncMode.APPEND,
+            messages = messages.filter { it.createdAt > existingNote.sourceLastMessageCreatedAt },
+            lastMessageCreatedAt = lastCreatedAt,
+            messageRevision = revision
+        )
+    }
+    return NoteSyncPlan(NoteSyncMode.REBUILD, messages, lastCreatedAt, revision)
 }

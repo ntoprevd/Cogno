@@ -39,6 +39,14 @@ class NoteEntity(
     var sourceMessageCount: Int,
 
     @JvmField
+    @ColumnInfo(name = "source_last_message_created_at")
+    var sourceLastMessageCreatedAt: Long,
+
+    @JvmField
+    @ColumnInfo(name = "source_message_revision")
+    var sourceMessageRevision: Long,
+
+    @JvmField
     @ColumnInfo(name = "pinned")
     var pinned: Boolean,
 
