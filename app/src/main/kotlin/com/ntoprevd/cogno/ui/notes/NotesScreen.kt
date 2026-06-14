@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -61,8 +62,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -82,6 +85,9 @@ import com.ntoprevd.cogno.data.repository.NativeNoteRepository
 import com.ntoprevd.cogno.data.repository.TopicRepository
 import com.ntoprevd.cogno.data.settings.AppLanguagePreference
 import com.ntoprevd.cogno.ui.common.BasicMarkdown
+import com.ntoprevd.cogno.ui.common.MarkdownEditorToolbar
+import com.ntoprevd.cogno.ui.common.continueMarkdownInput
+import com.ntoprevd.cogno.ui.common.toggleTaskLine
 import com.ntoprevd.cogno.ui.theme.CognoBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkLine
@@ -191,6 +197,12 @@ class NotesViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteTopic(topicName: String) {
         val topic = _uiState.value.topics.firstOrNull { it.name == topicName } ?: return
         viewModelScope.launch { topicRepository.deleteTopic(topic) }
+    }
+
+    fun updateTopicContent(topicName: String, sourceNoteIds: List<String>, content: String) {
+        viewModelScope.launch {
+            topicRepository.replaceTopicContent(topicName, sourceNoteIds, content)
+        }
     }
 }
 
@@ -349,8 +361,13 @@ fun NotesScreen(
             .sortedWith(
                 compareByDescending<TopicGroup> { it.topic in pinnedNames }
                     .thenByDescending { it.segments.size }
-                    .thenByDescending { it.updatedAt }
-            )
+            .thenByDescending { it.updatedAt }
+        )
+    }
+    LaunchedEffect(topicGroups, selectedTopic?.key) {
+        selectedTopic?.let { current ->
+            selectedTopic = topicGroups.firstOrNull { it.key == current.key }
+        }
     }
     val visibleTopicGroups = remember(displayTopicGroups, searchKeyword) {
         val keyword = searchKeyword.trim()
@@ -527,7 +544,8 @@ fun NotesScreen(
                 group = group,
                 isDark = isDark,
                 copy = copy,
-                onBack = { selectedTopic = null }
+                onBack = { selectedTopic = null },
+                onSave = viewModel::updateTopicContent
             )
         }
     }
@@ -843,31 +861,49 @@ private fun TopicDetailView(
     group: TopicGroup,
     isDark: Boolean,
     copy: NotesScreenCopy,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onSave: (String, List<String>, String) -> Unit
 ) {
     val context = LocalContext.current
     var isEditing by remember(group.key) { mutableStateOf(false) }
-    var editContent by remember(group.key) { mutableStateOf(group.toMarkdown(copy)) }
+    var editValue by remember(group.key) {
+        val content = group.toEditableMarkdown()
+        mutableStateOf(TextFieldValue(content, selection = TextRange(content.length)))
+    }
     var exportDialogVisible by remember(group.key) { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(if (isDark) CognoDarkBackground else CognoBackground)
+            .navigationBarsPadding()
+            .imePadding()
     ) {
         TopicDetailTopBar(
             isDark = isDark,
             copy = copy,
             isEditing = isEditing,
             onBack = onBack,
-            onToggleEdit = { isEditing = !isEditing },
+            onToggleEdit = {
+                if (isEditing) {
+                    onSave(
+                        group.topic,
+                        group.segments.map { it.sourceNoteId },
+                        editValue.text
+                    )
+                    isEditing = false
+                } else {
+                    val content = group.toEditableMarkdown()
+                    editValue = TextFieldValue(content, selection = TextRange(content.length))
+                    isEditing = true
+                }
+            },
             onExport = { exportDialogVisible = true }
         )
         Column(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .navigationBarsPadding()
                 .padding(horizontal = 28.dp, vertical = 18.dp)
         ) {
             Text(
@@ -910,13 +946,36 @@ private fun TopicDetailView(
             Spacer(modifier = Modifier.height(28.dp))
             if (isEditing) {
                 TopicContentEditor(
-                    value = editContent,
+                    value = editValue,
                     isDark = isDark,
-                    onValueChange = { editContent = it }
+                    onValueChange = { editValue = continueMarkdownInput(editValue, it) }
                 )
             } else {
-                TopicMarkdownSegments(group = group, isDark = isDark, copy = copy)
+                TopicMarkdownSegments(
+                    group = group,
+                    isDark = isDark,
+                    copy = copy,
+                    onTaskToggle = { segment, lineIndex, checked ->
+                        val updatedText = toggleTaskLine(segment.text, lineIndex, checked)
+                        val content = group.segments.joinToString("\n\n") {
+                            if (it === segment) updatedText else it.text
+                        }
+                        onSave(
+                            group.topic,
+                            group.segments.map { it.sourceNoteId },
+                            content
+                        )
+                    }
+                )
             }
+        }
+        if (isEditing) {
+            MarkdownEditorToolbar(
+                value = editValue,
+                isDark = isDark,
+                onValueChange = { editValue = it },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
     if (exportDialogVisible) {
@@ -925,7 +984,7 @@ private fun TopicDetailView(
             onDismiss = { exportDialogVisible = false },
             onExport = {
                 exportDialogVisible = false
-                val markdown = "# ${group.topic}\n\n${group.toMarkdown(copy)}"
+                val markdown = "# ${group.topic}\n\n${editValue.text.trim()}"
                 val intent = Intent(Intent.ACTION_SEND).apply {
                     type = "text/plain"
                     putExtra(Intent.EXTRA_SUBJECT, "${group.topic}.md")
@@ -1049,9 +1108,9 @@ private fun TopicMarkdownExportDialog(
 
 @Composable
 private fun TopicContentEditor(
-    value: String,
+    value: TextFieldValue,
     isDark: Boolean,
-    onValueChange: (String) -> Unit
+    onValueChange: (TextFieldValue) -> Unit
 ) {
     BasicTextField(
         value = value,
@@ -1079,14 +1138,18 @@ private fun TopicContentEditor(
 private fun TopicMarkdownSegments(
     group: TopicGroup,
     isDark: Boolean,
-    copy: NotesScreenCopy
+    copy: NotesScreenCopy,
+    onTaskToggle: (TopicSegment, Int, Boolean) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         group.segments.forEachIndexed { index, segment ->
             BasicMarkdown(
                 content = segment.text,
                 isDark = isDark,
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                onTaskToggle = { lineIndex, checked ->
+                    onTaskToggle(segment, lineIndex, checked)
+                }
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
@@ -1123,6 +1186,9 @@ private fun TopicGroup.toMarkdown(copy: NotesScreenCopy): String {
         }
     }.trim()
 }
+
+private fun TopicGroup.toEditableMarkdown(): String =
+    segments.joinToString(separator = "\n\n") { it.text.trim() }.trim()
 
 private fun formatNoteTime(timestamp: Long, copy: NotesScreenCopy): String {
     return SimpleDateFormat(copy.timePattern, copy.timeLocale).format(Date(timestamp))

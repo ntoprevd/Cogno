@@ -2,12 +2,16 @@ package com.ntoprevd.cogno.ui.common
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -44,7 +48,8 @@ fun BasicMarkdown(
     content: String,
     isDark: Boolean,
     modifier: Modifier = Modifier,
-    textColor: Color = if (isDark) CognoDarkText else CognoText
+    textColor: Color = if (isDark) CognoDarkText else CognoText,
+    onTaskToggle: ((lineIndex: Int, checked: Boolean) -> Unit)? = null
 ) {
     Column(
         modifier = modifier,
@@ -85,7 +90,13 @@ fun BasicMarkdown(
                 continue
             }
 
-            MarkdownLine(line = line, isDark = isDark, textColor = textColor)
+            MarkdownLine(
+                line = line,
+                lineIndex = index,
+                isDark = isDark,
+                textColor = textColor,
+                onTaskToggle = onTaskToggle
+            )
             index++
         }
 
@@ -101,46 +112,65 @@ private fun MarkdownTable(rows: List<String>, isDark: Boolean, textColor: Color)
     if (parsedRows.isEmpty()) return
     val columnCount = parsedRows.maxOf { it.size }.coerceAtLeast(1)
     val tableScroll = rememberScrollState()
+    val lineColor = if (isDark) CognoDarkLine else CognoLine
 
-    Column(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .horizontalScroll(tableScroll)
             .clip(RoundedCornerShape(12.dp))
             .border(
                 width = 1.dp,
-                color = if (isDark) CognoDarkLine else CognoLine,
+                color = lineColor,
                 shape = RoundedCornerShape(12.dp)
             )
             .background(if (isDark) CognoDarkSurface else CognoSurface)
     ) {
-        parsedRows.forEachIndexed { rowIndex, row ->
-            Row(
-                modifier = Modifier
-                    .width((columnCount * 120).dp)
-                    .background(
-                        if (rowIndex == 0) {
-                            (if (isDark) CognoDarkLine else CognoLine).copy(alpha = 0.28f)
-                        } else {
-                            Color.Transparent
-                        }
-                    ),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                repeat(columnCount) { columnIndex ->
-                    Text(
-                        text = parseInlineMarkdown(row.getOrNull(columnIndex).orEmpty()),
-                        color = textColor.copy(alpha = if (rowIndex == 0) 0.96f else 0.88f),
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
-                        fontWeight = if (rowIndex == 0) FontWeight.SemiBold else FontWeight.Normal,
-                        modifier = Modifier
-                            .weight(1f)
-                            .border(
-                                width = 0.5.dp,
-                                color = if (isDark) CognoDarkLine else CognoLine
+        val naturalWidth = (columnCount * 128).dp
+        val tableWidth = if (naturalWidth < maxWidth) maxWidth else naturalWidth
+        Column(modifier = Modifier.horizontalScroll(tableScroll)) {
+            parsedRows.forEachIndexed { rowIndex, row ->
+                Row(
+                    modifier = Modifier
+                        .width(tableWidth)
+                        .height(IntrinsicSize.Min)
+                        .background(
+                            if (rowIndex == 0) lineColor.copy(alpha = 0.22f)
+                            else Color.Transparent
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    repeat(columnCount) { columnIndex ->
+                        if (columnIndex > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(1.dp)
+                                    .background(lineColor)
                             )
-                            .padding(horizontal = 10.dp, vertical = 9.dp)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .padding(horizontal = 11.dp, vertical = 10.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            Text(
+                                text = parseInlineMarkdown(row.getOrNull(columnIndex).orEmpty()),
+                                color = textColor.copy(alpha = if (rowIndex == 0) 0.96f else 0.88f),
+                                fontSize = 14.sp,
+                                lineHeight = 20.sp,
+                                fontWeight = if (rowIndex == 0) FontWeight.SemiBold else FontWeight.Normal
+                            )
+                        }
+                    }
+                }
+                if (rowIndex < parsedRows.lastIndex) {
+                    Box(
+                        modifier = Modifier
+                            .width(tableWidth)
+                            .height(1.dp)
+                            .background(lineColor)
                     )
                 }
             }
@@ -149,7 +179,13 @@ private fun MarkdownTable(rows: List<String>, isDark: Boolean, textColor: Color)
 }
 
 @Composable
-private fun MarkdownLine(line: String, isDark: Boolean, textColor: Color) {
+private fun MarkdownLine(
+    line: String,
+    lineIndex: Int,
+    isDark: Boolean,
+    textColor: Color,
+    onTaskToggle: ((lineIndex: Int, checked: Boolean) -> Unit)?
+) {
     val trimmed = line.trim()
     when {
         trimmed.isBlank() -> Spacer(modifier = Modifier.height(4.dp))
@@ -158,7 +194,14 @@ private fun MarkdownLine(line: String, isDark: Boolean, textColor: Color) {
         trimmed.startsWith("#") -> MarkdownHeading(trimmed, textColor)
         trimmed.isListLine() -> {
             val item = trimmed.parseListItem()
-            MarkdownListItem(item.marker, item.text, textColor)
+            MarkdownListItem(
+                marker = item.marker,
+                text = item.text,
+                textColor = textColor,
+                onMarkerClick = item.checked?.let { checked ->
+                    onTaskToggle?.let { callback -> { callback(lineIndex, !checked) } }
+                }
+            )
         }
         else -> MarkdownText(parseInlineMarkdown(line), textColor)
     }
@@ -166,23 +209,24 @@ private fun MarkdownLine(line: String, isDark: Boolean, textColor: Color) {
 
 @Composable
 private fun MarkdownHeading(line: String, textColor: Color) {
-    val level = line.takeWhile { it == '#' }.length.coerceIn(1, 3)
-    val text = line.drop(level).trim()
+    val markerCount = line.takeWhile { it == '#' }.length.coerceAtLeast(1)
+    val displayLevel = markerCount.coerceIn(1, 3)
+    val text = line.drop(markerCount).trim()
     Text(
         text = parseInlineMarkdown(text),
         color = textColor,
-        fontSize = when (level) {
+        fontSize = when (displayLevel) {
             1 -> 22.sp
             2 -> 19.sp
             else -> 17.sp
         },
-        lineHeight = when (level) {
+        lineHeight = when (displayLevel) {
             1 -> 29.sp
             2 -> 26.sp
             else -> 24.sp
         },
         fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(top = if (level == 1) 10.dp else 6.dp)
+        modifier = Modifier.padding(top = if (displayLevel == 1) 10.dp else 6.dp)
     )
 }
 
@@ -198,14 +242,24 @@ private fun MarkdownText(text: AnnotatedString, textColor: Color) {
 }
 
 @Composable
-private fun MarkdownListItem(marker: String, text: String, textColor: Color) {
+private fun MarkdownListItem(
+    marker: String,
+    text: String,
+    textColor: Color,
+    onMarkerClick: (() -> Unit)? = null
+) {
     Row(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = marker,
             color = textColor.copy(alpha = 0.72f),
             fontSize = 16.sp,
             lineHeight = 25.sp,
-            modifier = Modifier.width(if (marker.length > 2) 32.dp else 20.dp)
+            modifier = Modifier
+                .width(if (marker.length > 2) 32.dp else 20.dp)
+                .then(
+                    if (onMarkerClick != null) Modifier.clickable(onClick = onMarkerClick)
+                    else Modifier
+                )
         )
         Text(
             text = parseInlineMarkdown(text),
@@ -272,7 +326,8 @@ private fun MarkdownCodeBlock(text: String, isDark: Boolean) {
 
 private data class MarkdownListItemData(
     val marker: String,
-    val text: String
+    val text: String,
+    val checked: Boolean? = null
 )
 
 private fun String.isListLine(): Boolean {
@@ -289,7 +344,11 @@ private fun String.parseListItem(): MarkdownListItemData {
     val task = Regex("""^[-*+]\s+\[([ xX])]\s+(.*)""").matchEntire(trimmed)
     if (task != null) {
         val checked = task.groupValues[1].equals("x", ignoreCase = true)
-        return MarkdownListItemData(if (checked) "☑" else "☐", task.groupValues[2])
+        return MarkdownListItemData(
+            marker = if (checked) "☑" else "☐",
+            text = task.groupValues[2],
+            checked = checked
+        )
     }
     val ordered = Regex("""^(\d+[.)])\s+(.*)""").matchEntire(trimmed)
     if (ordered != null) {
@@ -312,10 +371,33 @@ private fun isTableHeaderLine(line: String, separator: String): Boolean {
 }
 
 private fun String.tableCells(): List<String> {
-    return trim()
-        .trim('|')
-        .split("|")
-        .map { it.trim() }
+    val source = trim().trim('|')
+    val cells = mutableListOf<String>()
+    val current = StringBuilder()
+    var escaped = false
+    var inInlineCode = false
+
+    source.forEach { char ->
+        when {
+            escaped -> {
+                current.append(char)
+                escaped = false
+            }
+            char == '\\' -> escaped = true
+            char == '`' -> {
+                inInlineCode = !inInlineCode
+                current.append(char)
+            }
+            char == '|' && !inInlineCode -> {
+                cells += current.toString().trim()
+                current.clear()
+            }
+            else -> current.append(char)
+        }
+    }
+    if (escaped) current.append('\\')
+    cells += current.toString().trim()
+    return cells
 }
 
 private fun parseInlineMarkdown(text: String): AnnotatedString {
@@ -329,6 +411,18 @@ private fun AnnotatedString.Builder.appendStyledInline(text: String) {
     var index = 0
     while (index < text.length) {
         when {
+            text.startsWith("~~", index) -> {
+                val end = text.indexOf("~~", startIndex = index + 2)
+                if (end > index + 2) {
+                    pushStyle(SpanStyle(textDecoration = TextDecoration.LineThrough))
+                    append(text.substring(index + 2, end))
+                    pop()
+                    index = end + 2
+                } else {
+                    append(text[index])
+                    index++
+                }
+            }
             text.startsWith("**", index) -> {
                 val end = text.indexOf("**", startIndex = index + 2)
                 if (end > index + 2) {

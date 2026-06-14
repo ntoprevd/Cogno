@@ -35,6 +35,9 @@ interface TopicDao {
     @Query("DELETE FROM topics WHERE id = :id")
     suspend fun deleteTopic(id: String)
 
+    @Query("DELETE FROM topics WHERE is_builtin = 1")
+    suspend fun deleteBuiltInTopics()
+
     @Query("DELETE FROM topics")
     suspend fun deleteAllTopics()
 
@@ -44,9 +47,15 @@ interface TopicDao {
     @Query("SELECT id FROM note_topic_segments WHERE note_id = :noteId")
     suspend fun getSegmentIdsForNote(noteId: String): List<String>
 
+    @Query("SELECT * FROM note_topic_segments WHERE topic_name = :topicName ORDER BY created_at DESC, position ASC")
+    suspend fun getSegmentsForTopic(topicName: String): List<NoteTopicSegmentEntity>
+
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertSegments(segments: List<NoteTopicSegmentEntity>)
 
     @Query("DELETE FROM note_topic_segments WHERE note_id = :noteId")
     suspend fun deleteSegmentsForNote(noteId: String)
+
+    @Query("DELETE FROM note_topic_segments WHERE topic_name = :topicName")
+    suspend fun deleteSegmentsForTopic(topicName: String)
 }

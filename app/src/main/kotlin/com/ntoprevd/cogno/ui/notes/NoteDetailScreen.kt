@@ -49,13 +49,18 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.ntoprevd.cogno.data.repository.NativeNoteRepository
 import com.ntoprevd.cogno.data.settings.AppLanguagePreference
 import com.ntoprevd.cogno.ui.common.BasicMarkdown
+import com.ntoprevd.cogno.ui.common.MarkdownEditorToolbar
+import com.ntoprevd.cogno.ui.common.continueMarkdownInput
+import com.ntoprevd.cogno.ui.common.toggleTaskLine
 import com.ntoprevd.cogno.ui.theme.CognoBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkBackground
 import com.ntoprevd.cogno.ui.theme.CognoDarkPrimary
@@ -129,17 +134,20 @@ fun NoteDetailScreen(
         .collectAsStateWithLifecycle(initialValue = null)
         .value
     var isEditing by remember { mutableStateOf(false) }
-    var editContent by remember { mutableStateOf("") }
+    var editValue by remember { mutableStateOf(TextFieldValue()) }
     var exportDialogVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(note?.id) {
-        editContent = note?.content.orEmpty()
+        val content = note?.content.orEmpty()
+        editValue = TextFieldValue(content, selection = TextRange(content.length))
     }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(background)
+            .navigationBarsPadding()
+            .imePadding()
     ) {
         NoteDetailTopBar(
             isDark = isDark,
@@ -149,11 +157,12 @@ fun NoteDetailScreen(
             onToggleEdit = {
                 if (isEditing) {
                     scope.launch {
-                        repository.updateNoteContent(noteId, editContent)
+                        repository.updateNoteContent(noteId, editValue.text)
                         isEditing = false
                     }
                 } else {
-                    editContent = note?.content.orEmpty()
+                    val content = note?.content.orEmpty()
+                    editValue = TextFieldValue(content, selection = TextRange(content.length))
                     isEditing = true
                 }
             },
@@ -164,8 +173,6 @@ fun NoteDetailScreen(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .imePadding()
-                .navigationBarsPadding()
                 .padding(horizontal = 28.dp, vertical = 18.dp)
         ) {
             Text(
@@ -194,17 +201,31 @@ fun NoteDetailScreen(
             Spacer(modifier = Modifier.height(28.dp))
             if (isEditing) {
                 NoteContentEditor(
-                    value = editContent,
+                    value = editValue,
                     isDark = isDark,
-                    onValueChange = { editContent = it }
+                    onValueChange = { editValue = continueMarkdownInput(editValue, it) }
                 )
             } else {
                 BasicMarkdown(
                     content = note?.content ?: copy.missingNoteContent,
                     isDark = isDark,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    onTaskToggle = { lineIndex, checked ->
+                        note?.let { current ->
+                            val updated = toggleTaskLine(current.content, lineIndex, checked)
+                            scope.launch { repository.updateNoteContent(noteId, updated) }
+                        }
+                    }
                 )
             }
+        }
+        if (isEditing) {
+            MarkdownEditorToolbar(
+                value = editValue,
+                isDark = isDark,
+                onValueChange = { editValue = it },
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 
@@ -350,9 +371,9 @@ private fun NoteMarkdownExportDialog(
 
 @Composable
 private fun NoteContentEditor(
-    value: String,
+    value: TextFieldValue,
     isDark: Boolean,
-    onValueChange: (String) -> Unit
+    onValueChange: (TextFieldValue) -> Unit
 ) {
     BasicTextField(
         value = value,

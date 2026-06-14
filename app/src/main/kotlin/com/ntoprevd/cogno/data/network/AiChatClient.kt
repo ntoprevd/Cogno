@@ -149,40 +149,66 @@ class AiChatClient(context: Context) {
         topicNames: List<String> = emptyList()
     ): AiNoteDraft = withContext(Dispatchers.IO) {
         validateSettings(settings)
-        val request = authorizedRequest(settings, "chat/completions")
-            .post(
-                buildNoteRequestBody(
-                    settings = settings,
-                    conversationTitle = conversationTitle,
-                    conversationText = conversationText,
-                    style = style,
-                    existingContent = existingContent,
-                    topicNames = topicNames
-                ).toString().toRequestBody(JSON_MEDIA_TYPE)
+        val primaryContent = executeTextCompletion(
+            settings,
+            buildNoteRequestBody(
+                settings = settings,
+                conversationTitle = conversationTitle,
+                conversationText = conversationText,
+                style = style,
+                existingContent = existingContent,
+                topicNames = topicNames,
+                includeSegments = true
             )
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            val bodyText = response.body?.string().orEmpty()
-            if (!response.isSuccessful) {
-                throw AiChatException(parseErrorMessage(bodyText, response.code))
-            }
-
-            val json = runCatching { JSONObject(bodyText) }.getOrElse {
-                throw AiChatException("AI 返回内容不是有效 JSON")
-            }
-            val content = json
-                .optJSONArray("choices")
-                ?.optJSONObject(0)
-                ?.optJSONObject("message")
-                ?.optString("content")
-                ?.trim()
-                .orEmpty()
-            if (content.isBlank()) {
-                throw AiChatException("AI 没有生成笔记内容")
-            }
-            parseNoteDraft(content, conversationTitle)
+        )
+        if (primaryContent.isNotBlank()) {
+            runCatching { parseNoteDraft(primaryContent, conversationTitle) }
+                .getOrNull()
+                ?.let { return@withContext it }
         }
+
+        // 复杂 JSON 为空或被输出上限截断时，退化为正文请求，主题片段可在本地重建。
+        val fallbackContent = executeTextCompletion(
+            settings,
+            buildNoteRequestBody(
+                settings = settings,
+                conversationTitle = conversationTitle,
+                conversationText = conversationText,
+                style = style,
+                existingContent = existingContent,
+                topicNames = topicNames,
+                includeSegments = false
+            )
+        )
+        if (fallbackContent.isBlank()) throw AiChatException("AI 没有生成笔记内容，请重试")
+        parseNoteDraft(fallbackContent, conversationTitle)
+    }
+
+    suspend fun requestConversationTitle(
+        settings: AiSettings,
+        conversationText: String
+    ): String = withContext(Dispatchers.IO) {
+        validateSettings(settings)
+        val body = JSONObject()
+            .put("model", settings.modelId)
+            .put(
+                "messages",
+                JSONArray()
+                    .put(
+                        JSONObject()
+                            .put("role", "system")
+                            .put(
+                                "content",
+                                "请根据首轮用户与 AI 对话生成一个准确、自然的中文会话标题。" +
+                                    "只返回标题，不加引号、解释或 Markdown；控制在 6 至 18 个汉字。"
+                            )
+                    )
+                    .put(JSONObject().put("role", "user").put("content", conversationText))
+            )
+            .put("stream", false)
+            .put("temperature", NOTE_TEMPERATURE)
+            .put("max_tokens", 48)
+        sanitizeConversationTitle(executeTextCompletion(settings, body))
     }
 
     suspend fun fetchExperienceModels(): List<ExperienceModel> = withContext(Dispatchers.IO) {
@@ -444,18 +470,27 @@ class AiChatClient(context: Context) {
         conversationText: String,
         style: String,
         existingContent: String?,
-        topicNames: List<String>
+        topicNames: List<String>,
+        includeSegments: Boolean
     ): JSONObject {
+        val responseFormat = if (includeSegments) {
+            """{"title":"概括整段对话核心的简短标题","content":"本次新增的 Markdown 内容","segments":[]}"""
+        } else {
+            """{"title":"概括整段对话核心的简短标题","content":"本次新增的 Markdown 内容"}"""
+        }
         val systemPrompt = """
             你是 Cogno 的结构化笔记助手。请把本次提供的用户和 AI 对话整理成清晰、可复习的中文 Markdown 笔记内容。
             要求：
             1. 只总结对话中已经出现的信息，不要编造。
-            2. 使用二级/三级标题、要点列表和必要的解释。
-            3. 去掉寒暄和重复内容，保留关键结论、步骤、概念和注意事项。
-            4. 按用户选择的总结风格控制详略：$style。
-            5. 如果提供了已有笔记，它只用于参考既有结构和避免重复；绝对不要改写、复述或返回已有笔记。
-            6. content 只能包含本次新增对话对应的追加内容；首次总结时才包含完整总结。
-            7. 返回严格 JSON，格式为 {"title":"简短标题","content":"本次新增的 Markdown 内容","segments":[]}。
+            2. 先识别对话中真正独立的话题。只有当用户的核心问题、意图或讨论对象明显改变时，才新建一个二级标题。
+            3. 每个独立话题使用一个二级标题；同一话题中的观点、情绪、哲学思考、案例或方法等不同侧面使用三级标题，不要拆成并列大话题。
+            4. 三级标题下优先使用无序列表组织细节；只有步骤、时间顺序或明确排名时才使用有序列表。
+            5. 去掉寒暄和重复内容，保留关键结论、步骤、概念、分歧和注意事项。标题应概括讨论对象，而不是照搬分类主题名称。
+            6. 按用户选择的总结风格控制详略：$style。
+            7. 如果提供了已有笔记，它只用于判断话题延续、参考既有结构和避免重复；绝对不要改写、复述或返回已有笔记。
+            8. content 只能包含本次新增对话对应的追加内容；首次总结时才包含完整总结。若新增内容延续已有二级话题，直接使用合适的三级标题或无序列表，不要重复该二级标题；只有出现真正的新话题才增加二级标题。
+            9. 主题分类与笔记标题层级是两件事：主题仅用于跨笔记归档，不能为了分类而把一个完整话题拆散。
+            10. 返回严格 JSON，格式为 $responseFormat。
         """.trimIndent()
         val userContent = buildString {
             append("会话标题：")
@@ -468,14 +503,26 @@ class AiChatClient(context: Context) {
             }
             append("对话内容：\n")
             append(conversationText)
-            append("\n\n可用主题：")
-            append(topicNames.joinToString().ifBlank { "未分类" })
-            append(
-                "\n请在 title、content 字段之外返回 segments 数组。" +
-                    "每项格式为 {\"topic\":\"主题\",\"heading\":\"段落标题\",\"content\":\"最小内容单元 Markdown\"}。" +
-                    "更新已有笔记时，content 和 segments 都只返回本次新增内容，不要返回任何已有内容。" +
-                    "主题必须优先从可用主题中选择；规则修改不影响历史单元。"
-            )
+            if (includeSegments) {
+                append("\n\n可用主题：")
+                append(topicNames.joinToString().ifBlank { "未分类" })
+                append(
+                    "\n分类边界：" +
+                        "身体健康侧重日常保健、习惯与体能，医疗健康侧重症状、疾病、诊断和治疗；" +
+                        "心理状态侧重个人内在感受，亲密关系、家庭关系、人际社交按关系对象区分；" +
+                        "财务规划侧重预算和资产安排，购物消费侧重具体商品与购买决策；" +
+                        "兴趣创作侧重主动创作与技能兴趣，娱乐休闲侧重内容消费和放松；" +
+                        "体育竞技侧重赛事和竞技活动，日常锻炼仍归身体健康。" +
+                        "\n请在 title、content 字段之外返回 segments 数组。" +
+                        "每项格式为 {\"topic\":\"主题\",\"heading\":\"所属话题或侧面标题\",\"content\":\"可独立理解的最小内容单元 Markdown\"}。" +
+                        "每个 segment 只选择一个最贴切的主题，topic 必须严格使用可用主题中的原文，不要自造近义主题。" +
+                        "heading 描述内容在原对话中的话题或侧面，不要直接把分类主题名称当作 heading。" +
+                        "同一大话题可以包含多个不同主题的 segment，但 content 中仍应保持为一个二级标题下的多个三级侧面。" +
+                        "segment.content 不要复制整段笔记正文，只保留 1 至 3 条可独立理解的原子要点，单项尽量不超过 180 个汉字。" +
+                        "更新已有笔记时，content 和 segments 都只返回本次新增内容，不要返回任何已有内容。" +
+                        "规则修改不影响历史单元。"
+                )
+            }
         }
 
         return JSONObject()
@@ -491,7 +538,37 @@ class AiChatClient(context: Context) {
                     )
             )
             .put("stream", false)
-            .put("temperature", normalizedTemperature(settings.temperature))
+            // 笔记整理需要稳定结构，低温度也能减少无意义扩写带来的等待。
+            .put("temperature", NOTE_TEMPERATURE)
+            .put(
+                "max_tokens",
+                if (includeSegments) noteMaxTokens(style) else NOTE_MAX_TOKENS_FALLBACK
+            )
+    }
+
+    private fun executeTextCompletion(settings: AiSettings, body: JSONObject): String {
+        val request = authorizedRequest(settings, "chat/completions")
+            .post(body.toString().toRequestBody(JSON_MEDIA_TYPE))
+            .build()
+        return client.newCall(request).execute().use { response ->
+            val bodyText = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw AiChatException(parseErrorMessage(bodyText, response.code))
+            }
+            val json = runCatching { JSONObject(bodyText) }.getOrElse {
+                throw AiChatException("AI 返回内容不是有效 JSON")
+            }
+            extractAssistantContent(json)
+        }
+    }
+
+    private fun noteMaxTokens(style: String): Int {
+        val normalized = style.lowercase()
+        return when {
+            "简洁" in style || "concise" in normalized -> NOTE_MAX_TOKENS_CONCISE
+            "详细" in style || "detailed" in normalized -> NOTE_MAX_TOKENS_DETAILED
+            else -> NOTE_MAX_TOKENS_STANDARD
+        }
     }
 
     private fun buildSystemPrompt(settings: AiSettings): String {
@@ -537,6 +614,9 @@ class AiChatClient(context: Context) {
         if (parsed != null) {
             throw AiChatException("AI 返回的笔记正文为空，请重试")
         }
+        if (cleaned.startsWith("{") || cleaned.startsWith("[")) {
+            throw AiChatException("AI 返回的笔记 JSON 不完整，请重试")
+        }
 
         return AiNoteDraft(
             title = fallbackTitle.ifBlank { "会话笔记" },
@@ -553,7 +633,42 @@ class AiChatClient(context: Context) {
         private const val GLM_REQUEST_JPEG_QUALITY = 65
         private const val GLM_REQUEST_MIN_QUALITY = 35
         private const val GLM_REQUEST_MAX_BYTES = 48 * 1024
+        private const val NOTE_TEMPERATURE = 0.2
+        private const val NOTE_MAX_TOKENS_CONCISE = 1_000
+        private const val NOTE_MAX_TOKENS_STANDARD = 1_800
+        private const val NOTE_MAX_TOKENS_DETAILED = 2_800
+        private const val NOTE_MAX_TOKENS_FALLBACK = 3_200
     }
+}
+
+internal fun extractAssistantContent(response: JSONObject): String {
+    val content = response.optJSONArray("choices")
+        ?.optJSONObject(0)
+        ?.optJSONObject("message")
+        ?.opt("content")
+    return when (content) {
+        is String -> content.trim()
+        is JSONArray -> buildList {
+            for (index in 0 until content.length()) {
+                when (val part = content.opt(index)) {
+                    is String -> add(part)
+                    is JSONObject -> part.optString("text").takeIf(String::isNotBlank)?.let(::add)
+                }
+            }
+        }.joinToString("").trim()
+        else -> ""
+    }
+}
+
+internal fun sanitizeConversationTitle(raw: String): String {
+    return raw.lineSequence()
+        .firstOrNull(String::isNotBlank)
+        .orEmpty()
+        .trim()
+        .removePrefix("#")
+        .trim()
+        .trim('"', '\'', '“', '”')
+        .take(24)
 }
 
 data class AiChatResponse(

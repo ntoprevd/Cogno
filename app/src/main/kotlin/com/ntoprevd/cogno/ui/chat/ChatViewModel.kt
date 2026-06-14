@@ -138,6 +138,10 @@ class ChatViewModel(
                             errorMessage = null
                         )
                     }
+                    // 标题生成是首轮后的后台增强，不延迟聊天回复完成状态。
+                    viewModelScope.launch {
+                        runCatching { repository.generateSessionTitleIfNeeded(result.session.id) }
+                    }
                 }.onFailure { error ->
                     _uiState.update {
                         it.copy(

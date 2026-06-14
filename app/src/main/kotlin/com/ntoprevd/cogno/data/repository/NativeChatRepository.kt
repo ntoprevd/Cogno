@@ -253,6 +253,31 @@ class NativeChatRepository(context: Context) {
         streamAssistantReply(sessionId, assistantMessageId, messages)
     }
 
+    suspend fun generateSessionTitleIfNeeded(sessionId: String) {
+        val session = sessionDao.getSessionById(sessionId) ?: return
+        val messages = messageDao.getCompletedMessagesForNote(sessionId)
+        if (messages.size !in setOf(2, 4) || messages.firstOrNull()?.role != ROLE_USER) return
+
+        val originalTitle = buildTitle(
+            messages.first().content.ifBlank {
+                if (!messages.first().imagePath.isNullOrBlank()) IMAGE_PREVIEW else ""
+            }
+        )
+        if (session.title != originalTitle) return
+
+        val generated = aiChatClient.requestConversationTitle(
+            settings = settingsStore.load(),
+            conversationText = buildConversationText(messages.take(4))
+        ).trim()
+        if (generated.isBlank()) return
+
+        // 标题请求期间用户可能已经手动改名，写入前再次确认，绝不覆盖用户选择。
+        val latest = sessionDao.getSessionById(sessionId) ?: return
+        if (latest.title != originalTitle) return
+        latest.title = generated
+        sessionDao.updateSession(latest)
+    }
+
     suspend fun generateNoteFromSession(sessionId: String, style: String): GeneratedNoteResult {
         val session = sessionDao.getSessionById(sessionId)
             ?: throw IllegalStateException("请先选择一个会话")

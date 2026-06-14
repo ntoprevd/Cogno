@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.Flow
 
 class NativeNoteRepository(context: Context) {
     private val noteDao = AppDatabase.getInstance(context).noteDao()
+    private val topicRepository = TopicRepository(context)
 
     fun observeNotes(): Flow<List<NoteEntity>> =
         noteDao.observeAllNotesOrderByUpdatedAtDesc()
@@ -32,6 +33,12 @@ class NativeNoteRepository(context: Context) {
             updatedAt = now
         )
         noteDao.insertNote(note)
+        topicRepository.replaceSegments(
+            note = note,
+            aiSegments = emptyList(),
+            fallbackContent = note.content,
+            sourceMessageCount = 0
+        )
         return note
     }
 
@@ -61,6 +68,13 @@ class NativeNoteRepository(context: Context) {
         note.preview = preview(nextContent)
         note.updatedAt = System.currentTimeMillis()
         noteDao.updateNote(note)
+        // 用户正文是最终依据，编辑后同步重建主题片段，避免主题页继续显示旧 AI 快照。
+        topicRepository.replaceSegments(
+            note = note,
+            aiSegments = emptyList(),
+            fallbackContent = nextContent,
+            sourceMessageCount = note.sourceMessageCount
+        )
     }
 
     suspend fun deleteNote(noteId: String) {
