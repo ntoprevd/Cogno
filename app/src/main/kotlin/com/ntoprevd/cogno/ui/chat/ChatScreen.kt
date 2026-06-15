@@ -36,6 +36,7 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitLongPressOrCancellation
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -104,8 +105,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
@@ -133,6 +136,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.core.content.ContextCompat
@@ -1221,6 +1226,7 @@ private fun ChatMessageImage(
     imagePath: String,
     modifier: Modifier = Modifier
 ) {
+    var isExpanded by remember(imagePath) { mutableStateOf(false) }
     val bitmap by produceState<android.graphics.Bitmap?>(initialValue = null, imagePath) {
         value = withContext(Dispatchers.IO) {
             BitmapFactory.decodeFile(imagePath)
@@ -1232,8 +1238,73 @@ private fun ChatMessageImage(
             bitmap = loadedBitmap.asImageBitmap(),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = modifier.clip(RoundedCornerShape(15.dp))
+            modifier = modifier
+                .clip(RoundedCornerShape(15.dp))
+                .clickable { isExpanded = true }
         )
+
+        if (isExpanded) {
+            ExpandedChatImageDialog(
+                bitmap = loadedBitmap,
+                onDismiss = { isExpanded = false }
+            )
+        }
+    }
+}
+
+@Composable
+private fun ExpandedChatImageDialog(
+    bitmap: android.graphics.Bitmap,
+    onDismiss: () -> Unit
+) {
+    var scale by remember { mutableStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black)
+        ) {
+            // 全屏查看保留本地原图，并支持常见的双指缩放与拖动手势。
+            Image(
+                bitmap = bitmap.asImageBitmap(),
+                contentDescription = null,
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTransformGestures { _, pan, zoom, _ ->
+                            val nextScale = (scale * zoom).coerceIn(1f, 5f)
+                            scale = nextScale
+                            offset = if (nextScale == 1f) Offset.Zero else offset + pan
+                        }
+                    }
+                    .graphicsLayer {
+                        scaleX = scale
+                        scaleY = scale
+                        translationX = offset.x
+                        translationY = offset.y
+                    }
+            )
+            IconButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(12.dp)
+                    .background(Color.Black.copy(alpha = 0.48f), CircleShape)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "关闭图片",
+                    tint = Color.White
+                )
+            }
+        }
     }
 }
 

@@ -22,6 +22,8 @@ import com.ntoprevd.cogno.ui.chat.ChatScreen
 import com.ntoprevd.cogno.ui.notes.NoteDetailScreen
 import com.ntoprevd.cogno.ui.notes.NotesScreen
 import com.ntoprevd.cogno.ui.settings.ProfileSettingsScreen
+import com.ntoprevd.cogno.ui.settings.LegalDocumentScreen
+import com.ntoprevd.cogno.ui.settings.LegalDocumentType
 import com.ntoprevd.cogno.ui.settings.SettingsScreen
 import com.ntoprevd.cogno.ui.settings.TopicSettingsScreen
 import com.ntoprevd.cogno.ui.theme.CognoTheme
@@ -32,6 +34,8 @@ object CognoRoutes {
     const val SETTINGS = "settings"
     const val PROFILE_SETTINGS = "profileSettings"
     const val TOPIC_SETTINGS = "topicSettings"
+    const val PRIVACY_POLICY = "privacyPolicy"
+    const val TERMS_OF_SERVICE = "termsOfService"
     const val NOTE_DETAIL = "noteDetail/{noteId}"
 
     fun noteDetail(noteId: String): String = "noteDetail/$noteId"
@@ -107,6 +111,8 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
                     avatarUri = avatarUri,
                     onOpenProfile = { navController.navigate(CognoRoutes.PROFILE_SETTINGS) },
                     onOpenTopics = { navController.navigate(CognoRoutes.TOPIC_SETTINGS) },
+                    onOpenPrivacyPolicy = { navController.navigate(CognoRoutes.PRIVACY_POLICY) },
+                    onOpenTermsOfService = { navController.navigate(CognoRoutes.TERMS_OF_SERVICE) },
                     darkModePreference = darkModePreference,
                     onDarkModePreferenceChange = { value ->
                         appSettingsStore.saveDarkModePreference(value)
@@ -135,6 +141,20 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
             }
             composable(route = CognoRoutes.TOPIC_SETTINGS) {
                 TopicSettingsScreen(
+                    languagePreference = languagePreference,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(route = CognoRoutes.PRIVACY_POLICY) {
+                LegalDocumentScreen(
+                    type = LegalDocumentType.PRIVACY_POLICY,
+                    languagePreference = languagePreference,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(route = CognoRoutes.TERMS_OF_SERVICE) {
+                LegalDocumentScreen(
+                    type = LegalDocumentType.TERMS_OF_SERVICE,
                     languagePreference = languagePreference,
                     onBack = { navController.popBackStack() }
                 )

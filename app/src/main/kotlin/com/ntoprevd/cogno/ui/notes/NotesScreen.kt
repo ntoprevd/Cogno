@@ -5,6 +5,7 @@ import android.content.Intent
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -340,6 +341,11 @@ fun NotesScreen(
     var selectedTopic by remember { mutableStateOf<TopicGroup?>(null) }
     var topicRenameTarget by remember { mutableStateOf<TopicGroup?>(null) }
     var topicRenameText by remember { mutableStateOf("") }
+
+    // 主题详情是笔记库内的页面状态，系统返回键应先回到主题列表。
+    BackHandler(enabled = selectedTopic != null) {
+        selectedTopic = null
+    }
     val visibleNotes = remember(uiState.notes, searchKeyword) {
         val keyword = searchKeyword.trim()
         if (keyword.isBlank()) {

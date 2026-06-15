@@ -1,5 +1,6 @@
 package com.ntoprevd.cogno.ui.settings
 
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
@@ -58,7 +59,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.ntoprevd.cogno.data.db.AppDatabase
+import com.ntoprevd.cogno.data.export.DataExportManager
+import com.ntoprevd.cogno.data.export.DataExportMode
 import com.ntoprevd.cogno.data.network.AiChatClient
 import com.ntoprevd.cogno.data.network.ExperienceModel
 import com.ntoprevd.cogno.data.settings.AiSettings
@@ -83,6 +88,8 @@ import java.io.File
 import java.text.NumberFormat
 import java.util.Calendar
 import java.util.Locale
+import java.text.SimpleDateFormat
+import java.util.Date
 import kotlinx.coroutines.launch
 
 private data class SettingsCopy(
@@ -203,6 +210,8 @@ fun SettingsScreen(
     avatarUri: String,
     onOpenProfile: () -> Unit,
     onOpenTopics: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
+    onOpenTermsOfService: () -> Unit,
     darkModePreference: String,
     onDarkModePreferenceChange: (String) -> Unit,
     languagePreference: String,
@@ -216,6 +225,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val settingsStore = remember(context) { AiSettingsStore(context) }
     val aiChatClient = remember(context) { AiChatClient(context) }
+    val dataExportManager = remember(context) { DataExportManager(context) }
     val scope = rememberCoroutineScope()
     var savedSettings by remember { mutableStateOf(settingsStore.load()) }
     val monthStart = remember { currentMonthStartMillis() }
@@ -248,6 +258,45 @@ fun SettingsScreen(
     var darkModeDialogVisible by remember { mutableStateOf(false) }
     var languageDialogVisible by remember { mutableStateOf(false) }
     var saveConfirmVisible by remember { mutableStateOf(false) }
+    var pendingExportMode by remember { mutableStateOf<DataExportMode?>(null) }
+    var exportStatus by remember(languagePreference) { mutableStateOf("") }
+    val exportLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip")
+    ) { destination: Uri? ->
+        val mode = pendingExportMode
+        pendingExportMode = null
+        if (destination == null || mode == null) return@rememberLauncherForActivityResult
+        exportStatus = if (languagePreference == AppLanguagePreference.EN) {
+            "Exporting..."
+        } else {
+            "正在导出..."
+        }
+        scope.launch {
+            runCatching {
+                dataExportManager.exportTo(destination, mode)
+            }.onSuccess {
+                exportStatus = if (languagePreference == AppLanguagePreference.EN) {
+                    "Export completed"
+                } else {
+                    "导出完成"
+                }
+            }.onFailure { error ->
+                exportStatus = if (languagePreference == AppLanguagePreference.EN) {
+                    "Export failed: ${error.message.orEmpty()}"
+                } else {
+                    "导出失败：${error.message.orEmpty()}"
+                }
+            }
+        }
+    }
+
+    fun requestExport(mode: DataExportMode) {
+        pendingExportMode = mode
+        exportStatus = ""
+        val timestamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date())
+        val scopeName = if (mode == DataExportMode.ALL_DATA) "all" else "chats"
+        exportLauncher.launch("Cogno-$scopeName-$timestamp.zip")
+    }
     val experienceModelOptions = if (experienceModels.isNotEmpty()) {
         experienceModels.map { model ->
             SettingsOption(
@@ -571,6 +620,41 @@ fun SettingsScreen(
                     onValueChange = onLanguagePreferenceChange
                 )
                 DividerLine(isDark)
+                SettingsPickerRow(
+                    label = if (languagePreference == AppLanguagePreference.EN) {
+                        "Export all data"
+                    } else {
+                        "导出全部数据"
+                    },
+                    value = "ZIP",
+                    isDark = isDark,
+                    onClick = { requestExport(DataExportMode.ALL_DATA) }
+                )
+                DividerLine(isDark)
+                SettingsPickerRow(
+                    label = if (languagePreference == AppLanguagePreference.EN) {
+                        "Export chats only"
+                    } else {
+                        "仅导出聊天记录"
+                    },
+                    value = "ZIP",
+                    isDark = isDark,
+                    onClick = { requestExport(DataExportMode.CHATS_ONLY) }
+                )
+                if (exportStatus.isNotBlank()) {
+                    DividerLine(isDark)
+                    Text(
+                        text = exportStatus,
+                        color = if (exportStatus.startsWith("导出失败") || exportStatus.startsWith("Export failed")) {
+                            Color(0xFFE05650)
+                        } else {
+                            CognoMuted
+                        },
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(vertical = 12.dp)
+                    )
+                }
+                DividerLine(isDark)
                 CacheCleanupRow(
                     status = cacheStatus,
                     isDark = isDark,
@@ -589,7 +673,29 @@ fun SettingsScreen(
             ) {
                 Text("Cogno v1.1.0-stable", color = CognoMuted, fontSize = 12.sp)
                 Spacer(modifier = Modifier.height(8.dp))
-                Text(copy.privacyTerms, color = if (isDark) CognoDarkPrimary else CognoPrimary, fontSize = 12.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        text = if (languagePreference == AppLanguagePreference.EN) {
+                            "Privacy Policy"
+                        } else {
+                            "隐私政策"
+                        },
+                        color = if (isDark) CognoDarkPrimary else CognoPrimary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.clickable(onClick = onOpenPrivacyPolicy)
+                    )
+                    Text("|", color = CognoMuted, fontSize = 12.sp)
+                    Text(
+                        text = if (languagePreference == AppLanguagePreference.EN) {
+                            "Terms of Service"
+                        } else {
+                            "服务条款"
+                        },
+                        color = if (isDark) CognoDarkPrimary else CognoPrimary,
+                        fontSize = 12.sp,
+                        modifier = Modifier.clickable(onClick = onOpenTermsOfService)
+                    )
+                }
             }
         }
     }

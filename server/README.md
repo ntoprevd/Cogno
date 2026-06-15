@@ -31,12 +31,20 @@ Dashboard deployment:
 3. In Settings > Variables and Secrets, add encrypted secrets:
    - `GLM_API_KEY`
    - `COGNO_APP_TOKEN`
-4. Add normal variables:
+   - `OSS_ACCESS_KEY_ID` (RAM user AccessKey ID)
+   - `OSS_ACCESS_KEY_SECRET` (RAM user AccessKey secret)
+4. Create a private Alibaba Cloud OSS bucket named `cogno-temporary-images` in Hong Kong.
+5. Add an OSS lifecycle rule that deletes objects with prefix `temporary/` after 1 day.
+6. Add normal variables:
    - `COGNO_GATEWAY_ENABLED=true`
    - `MAX_INPUT_CHARS=60000`
    - `MAX_OUTPUT_TOKENS=8192`
-5. Deploy and copy the generated `workers.dev` URL.
-6. Append `/v1` to that URL for Android's `COGNO_EXPERIENCE_BASE_URL`.
+   - `MAX_IMAGE_BYTES=5242880`
+   - `IMAGE_URL_TTL_SECONDS=900`
+   - `OSS_BUCKET=cogno-temporary-images`
+   - `OSS_ENDPOINT=https://oss-cn-hongkong.aliyuncs.com`
+7. Deploy and copy the generated `workers.dev` URL.
+8. Append `/v1` to that URL for Android's `COGNO_EXPERIENCE_BASE_URL`.
 
 The Android app token must match the Worker secret. The GLM key remains only inside Cloudflare.
 
@@ -60,6 +68,11 @@ COGNO_EXPERIENCE_APP_TOKEN=the-same-app-token
 
 - `GET /health`
 - `GET /v1/models`
+- `POST /v1/images`
 - `POST /v1/chat/completions`
+
+The Worker uploads temporary images to the private OSS bucket by using a restricted RAM user.
+It returns a 15-minute OSS signed GET URL to the Android app, which is then passed to the vision
+model. Never place the RAM AccessKey pair in the Android app or commit it to this repository.
 
 Limits are intentionally loose for classroom testing and can be changed through environment variables.

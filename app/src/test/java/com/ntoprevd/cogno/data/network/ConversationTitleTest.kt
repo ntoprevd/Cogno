@@ -14,6 +14,14 @@ class ConversationTitleTest {
 
     @Test
     fun limitsUnexpectedlyLongTitle() {
-        assertEquals(24, sanitizeConversationTitle("很长".repeat(30)).length)
+        assertEquals(15, sanitizeConversationTitle("很长".repeat(30)).length)
+    }
+
+    @Test
+    fun removesTitlePrefixAndTrailingPunctuation() {
+        assertEquals(
+            "图片中的建筑风格",
+            sanitizeConversationTitle("标题：图片中的建筑风格。")
+        )
     }
 }

@@ -97,7 +97,7 @@ class NativeChatRepository(context: Context) {
                 val targetSession = if (sessionId.isNullOrBlank()) {
                     SessionEntity(
                         UUID.randomUUID().toString(),
-                        buildTitle(messagePreview),
+                        DEFAULT_SESSION_TITLE,
                         settings.modelId,
                         false,
                         false,
@@ -108,7 +108,7 @@ class NativeChatRepository(context: Context) {
                 } else {
                     sessionDao.getSessionById(sessionId) ?: SessionEntity(
                         sessionId,
-                        buildTitle(messagePreview),
+                        DEFAULT_SESSION_TITLE,
                         settings.modelId,
                         false,
                         false,
@@ -256,24 +256,27 @@ class NativeChatRepository(context: Context) {
     suspend fun generateSessionTitleIfNeeded(sessionId: String) {
         val session = sessionDao.getSessionById(sessionId) ?: return
         val messages = messageDao.getCompletedMessagesForNote(sessionId)
-        if (messages.size !in setOf(2, 4) || messages.firstOrNull()?.role != ROLE_USER) return
+        if (messages.size < 2 || messages.firstOrNull()?.role != ROLE_USER) return
 
-        val originalTitle = buildTitle(
+        val legacyFirstMessageTitle = buildTitle(
             messages.first().content.ifBlank {
                 if (!messages.first().imagePath.isNullOrBlank()) IMAGE_PREVIEW else ""
             }
         )
-        if (session.title != originalTitle) return
+        val replaceableTitles = setOf(DEFAULT_SESSION_TITLE, legacyFirstMessageTitle)
+        if (session.title !in replaceableTitles) return
 
         val generated = aiChatClient.requestConversationTitle(
             settings = settingsStore.load(),
             conversationText = buildConversationText(messages.take(4))
         ).trim()
-        if (generated.isBlank()) return
+        // 无效或仍在照抄首句的结果不落库，后续成功回复会继续尝试生成。
+        if (generated.length !in MIN_GENERATED_TITLE_LENGTH..MAX_GENERATED_TITLE_LENGTH) return
+        if (generated == legacyFirstMessageTitle) return
 
         // 标题请求期间用户可能已经手动改名，写入前再次确认，绝不覆盖用户选择。
         val latest = sessionDao.getSessionById(sessionId) ?: return
-        if (latest.title != originalTitle) return
+        if (latest.title !in replaceableTitles) return
         latest.title = generated
         sessionDao.updateSession(latest)
     }
@@ -472,6 +475,9 @@ class NativeChatRepository(context: Context) {
         private const val ROLE_USER = "user"
         private const val ROLE_ASSISTANT = "assistant"
         private const val IMAGE_PREVIEW = "[图片]"
+        private const val DEFAULT_SESSION_TITLE = "新会话"
+        private const val MIN_GENERATED_TITLE_LENGTH = 4
+        private const val MAX_GENERATED_TITLE_LENGTH = 15
     }
 }
 

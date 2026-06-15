@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface MessageDao {
+    @Query("SELECT * FROM messages ORDER BY session_id ASC, created_at ASC")
+    suspend fun getAllMessagesForExport(): List<MessageEntity>
+
     @Query(
         "SELECT * FROM messages " +
             "WHERE session_id = :sessionId " +

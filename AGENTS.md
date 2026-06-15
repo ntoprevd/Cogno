@@ -308,7 +308,6 @@ Cogno 是一个 Android 原生应用原型，当前主线已经从早期 WebView
 
 ### P1：设置页和语言体系
 
-- API Key 仍保存在 SharedPreferences，后续应升级到 Android Keystore / EncryptedSharedPreferences 一类安全存储。
 - 清理临时缓存目前未真实删除文件，因为项目规则禁止批量删除；若要做真实清理，需要重新定义安全边界并征求用户确认。
 
 ### P2：笔记系统增强

@@ -20,6 +20,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
@@ -199,8 +200,9 @@ class AiChatClient(context: Context) {
                             .put("role", "system")
                             .put(
                                 "content",
-                                "请根据首轮用户与 AI 对话生成一个准确、自然的中文会话标题。" +
-                                    "只返回标题，不加引号、解释或 Markdown；控制在 6 至 18 个汉字。"
+                                "请根据用户与 AI 的前一至两轮对话生成一个准确、自然的中文会话标题。" +
+                                    "概括核心意图，不要直接照抄用户首句；" +
+                                    "只返回标题，不加引号、解释、标点或 Markdown；严格控制在 4 至 15 个汉字。"
                             )
                     )
                     .put(JSONObject().put("role", "user").put("content", conversationText))
@@ -244,7 +246,7 @@ class AiChatClient(context: Context) {
         }
     }
 
-    private fun buildRequestBody(
+    private suspend fun buildRequestBody(
         settings: AiSettings,
         messages: List<MessageEntity>,
         stream: Boolean = false
@@ -269,20 +271,20 @@ class AiChatClient(context: Context) {
             ?.takeIf { it.role == "user" && !it.imagePath.isNullOrBlank() }
             ?.id
 
-        completedMessages.forEach { message ->
-                requestMessages.put(
-                    JSONObject()
-                        .put("role", message.role)
-                        .put(
-                            "content",
-                            buildMessageContent(
-                                settings = settings,
-                                message = message,
-                                includeImage = message.id == activeImageMessageId
-                            )
+        for (message in completedMessages) {
+            requestMessages.put(
+                JSONObject()
+                    .put("role", message.role)
+                    .put(
+                        "content",
+                        buildMessageContent(
+                            settings = settings,
+                            message = message,
+                            includeImage = message.id == activeImageMessageId
                         )
-                )
-            }
+                    )
+            )
+        }
 
         return JSONObject()
             .put("model", settings.modelId)
@@ -297,7 +299,7 @@ class AiChatClient(context: Context) {
             }
     }
 
-    private fun buildMessageContent(
+    private suspend fun buildMessageContent(
         settings: AiSettings,
         message: MessageEntity,
         includeImage: Boolean
@@ -326,17 +328,24 @@ class AiChatClient(context: Context) {
         }
 
         val mimeType = message.imageMimeType?.takeIf { it.startsWith("image/") } ?: "image/jpeg"
-        val imageBytes = if (isGlmModel) {
-            compressedGlmRequestBytes(imageFile)
+        val imageUrl = if (
+            settings.sourceMode == AiSourceMode.EXPERIENCE &&
+            isGlmVisionModel(settings.modelId)
+        ) {
+            uploadExperienceImage(settings, imageFile, mimeType)
         } else {
-            imageFile.readBytes()
-        }
-        val base64 = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
-        val imageUrl = if (isGlmModel) {
-            // 智谱 GLM 的 Base64 接口要求直接传编码内容，不使用 Data URI 前缀。
-            base64
-        } else {
-            "data:$mimeType;base64,$base64"
+            val imageBytes = if (isGlmModel) {
+                compressedGlmRequestBytes(imageFile)
+            } else {
+                imageFile.readBytes()
+            }
+            val base64 = Base64.encodeToString(imageBytes, Base64.NO_WRAP)
+            if (isGlmModel) {
+                // 自定义 GLM 接口保留兼容路径；体验视觉模型统一使用临时 HTTPS URL。
+                base64
+            } else {
+                "data:$mimeType;base64,$base64"
+            }
         }
         val contentParts = JSONArray()
         contentParts.put(
@@ -353,6 +362,27 @@ class AiChatClient(context: Context) {
                 .put("text", message.content.ifBlank { "请描述这张图片。" })
         )
         return contentParts
+    }
+
+    private fun uploadExperienceImage(
+        settings: AiSettings,
+        imageFile: File,
+        mimeType: String
+    ): String {
+        val request = authorizedRequest(settings, "images")
+            .addHeader("Content-Type", mimeType)
+            .post(imageFile.asRequestBody(mimeType.toMediaType()))
+            .build()
+        return client.newCall(request).execute().use { response ->
+            val bodyText = response.body?.string().orEmpty()
+            if (!response.isSuccessful) {
+                throw AiChatException(parseErrorMessage(bodyText, response.code))
+            }
+            runCatching { JSONObject(bodyText).optString("url") }
+                .getOrDefault("")
+                .takeIf { it.startsWith("https://") }
+                ?: throw AiChatException("图片临时上传成功，但未获得有效访问地址")
+        }
     }
 
     private fun compressedGlmRequestBytes(imageFile: File): ByteArray {
@@ -661,15 +691,22 @@ internal fun extractAssistantContent(response: JSONObject): String {
 }
 
 internal fun sanitizeConversationTitle(raw: String): String {
-    return raw.lineSequence()
+    val normalized = raw.lineSequence()
         .firstOrNull(String::isNotBlank)
         .orEmpty()
         .trim()
         .removePrefix("#")
         .trim()
         .trim('"', '\'', '“', '”')
-        .take(24)
+        .removePrefix("标题：")
+        .removePrefix("标题:")
+        .trim()
+        .trimEnd('。', '，', ',', '.', '！', '!', '？', '?', '；', ';', '：', ':')
+        .trim()
+    return normalized.take(MAX_CONVERSATION_TITLE_LENGTH)
 }
+
+private const val MAX_CONVERSATION_TITLE_LENGTH = 15
 
 data class AiChatResponse(
     val content: String,

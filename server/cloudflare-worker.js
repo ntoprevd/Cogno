@@ -31,6 +31,10 @@ export default {
       return json({ ok: true, enabled: env.COGNO_GATEWAY_ENABLED !== "false", models: MODELS.length });
     }
 
+    if (request.method === "GET" && url.pathname.startsWith("/v1/images/")) {
+      return serveSignedImage(url, env);
+    }
+
     if (env.COGNO_GATEWAY_ENABLED === "false") {
       return errorResponse(503, "体验模型当前已停用");
     }
@@ -43,6 +47,10 @@ export default {
       return json({
         data: MODELS.map(({ upstreamModel, ...model }) => model)
       });
+    }
+
+    if (request.method === "POST" && url.pathname === "/v1/images") {
+      return uploadTemporaryImage(request, url, env);
     }
 
     if (request.method !== "POST" || url.pathname !== "/v1/chat/completions") {
@@ -100,6 +108,112 @@ export default {
     });
   }
 };
+
+async function uploadTemporaryImage(request, url, env) {
+  if (!hasOssConfig(env)) {
+    return errorResponse(503, "图片对象存储尚未配置");
+  }
+  const contentType = request.headers.get("Content-Type") || "";
+  if (!["image/jpeg", "image/png", "image/webp"].includes(contentType)) {
+    return errorResponse(415, "仅支持 JPEG、PNG 或 WebP 图片");
+  }
+  const bytes = await request.arrayBuffer();
+  const maxBytes = Number(env.MAX_IMAGE_BYTES || 5 * 1024 * 1024);
+  if (bytes.byteLength === 0 || bytes.byteLength > maxBytes) {
+    return errorResponse(413, "图片大小超出限制");
+  }
+
+  const extension = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
+  const key = `temporary/${crypto.randomUUID()}.${extension}`;
+  const uploadResponse = await putOssObject(env, key, bytes, contentType);
+  if (!uploadResponse.ok) {
+    const ossError = await uploadResponse.text();
+    const ossCode = ossError.match(/<Code>([^<]+)<\/Code>/)?.[1] || "UnknownError";
+    // 只返回 OSS 错误码，不暴露请求签名、AccessKey 或完整上游响应。
+    return errorResponse(
+      502,
+      `图片上传至 OSS 失败：${ossCode}（HTTP ${uploadResponse.status}）`
+    );
+  }
+  const expires = Math.floor(Date.now() / 1000) + Number(env.IMAGE_URL_TTL_SECONDS || 900);
+  return json({
+    url: await createOssSignedGetUrl(env, key, expires),
+    expires_at: expires
+  });
+}
+
+async function serveSignedImage(url, env) {
+  return errorResponse(410, "图片访问已迁移至阿里云 OSS 临时签名地址");
+}
+
+function hasOssConfig(env) {
+  return Boolean(
+    env.OSS_ACCESS_KEY_ID &&
+    env.OSS_ACCESS_KEY_SECRET &&
+    env.OSS_BUCKET &&
+    env.OSS_ENDPOINT
+  );
+}
+
+async function putOssObject(env, key, bytes, contentType) {
+  const date = new Date().toUTCString();
+  const canonicalResource = `/${env.OSS_BUCKET}/${key}`;
+  const stringToSign = `PUT\n\n${contentType}\n${date}\n${canonicalResource}`;
+  const signature = await hmacSha1Base64(env.OSS_ACCESS_KEY_SECRET, stringToSign);
+  return fetch(ossObjectUrl(env, key), {
+    method: "PUT",
+    headers: {
+      Authorization: `OSS ${env.OSS_ACCESS_KEY_ID}:${signature}`,
+      "Content-Type": contentType,
+      Date: date
+    },
+    body: bytes
+  });
+}
+
+async function createOssSignedGetUrl(env, key, expires) {
+  const canonicalResource = `/${env.OSS_BUCKET}/${key}`;
+  const stringToSign = `GET\n\n\n${expires}\n${canonicalResource}`;
+  const signature = await hmacSha1Base64(env.OSS_ACCESS_KEY_SECRET, stringToSign);
+  const params = new URLSearchParams({
+    OSSAccessKeyId: env.OSS_ACCESS_KEY_ID,
+    Expires: String(expires),
+    Signature: signature
+  });
+  return `${ossObjectUrl(env, key)}?${params}`;
+}
+
+function ossObjectUrl(env, key) {
+  const endpointHost = env.OSS_ENDPOINT
+    .replace(/^https?:\/\//, "")
+    .replace(/\/+$/, "");
+  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+  return `https://${env.OSS_BUCKET}.${endpointHost}/${encodedKey}`;
+}
+
+async function hmacSha1Base64(secret, value) {
+  const encoder = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    { name: "HMAC", hash: "SHA-1" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    cryptoKey,
+    encoder.encode(value)
+  );
+  return arrayBufferToBase64(signature);
+}
+
+function arrayBufferToBase64(value) {
+  const bytes = new Uint8Array(value);
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
 
 function corsHeaders() {
   return {

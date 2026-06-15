@@ -12,6 +12,12 @@ import kotlinx.coroutines.flow.Flow
 @Dao
 interface TopicDao {
     @Query("SELECT * FROM topics ORDER BY pinned DESC, is_builtin DESC, created_at ASC")
+    suspend fun getAllTopicsForExport(): List<TopicEntity>
+
+    @Query("SELECT * FROM note_topic_segments ORDER BY created_at ASC, position ASC")
+    suspend fun getAllSegmentsForExport(): List<NoteTopicSegmentEntity>
+
+    @Query("SELECT * FROM topics ORDER BY pinned DESC, is_builtin DESC, created_at ASC")
     fun observeTopics(): Flow<List<TopicEntity>>
 
     @Query("SELECT * FROM topics WHERE enabled = 1 ORDER BY is_builtin DESC, created_at ASC")
