@@ -179,7 +179,7 @@ private fun privacySectionsZh() = listOf(
     ),
     LegalSection(
         "3. AI 请求与 API 配置",
-        "使用体验模型时，必要的提示词、对话内容及所选图片会经 Cogno 的 Cloudflare Worker 转发至对应模型服务商。使用自定义 API 时，请求会发送至用户配置的 API Base URL，服务商将依其自身政策处理数据。\n\n自定义 API Key 保存在设备本地应用配置中，目前未使用端到端加密存储。Cogno 不会把该密钥发送给个人开发者，但会在请求时将其作为鉴权信息发送至用户选择的 API 服务商。请勿在共享或不受信任的设备上保存敏感密钥。"
+        "使用体验模型时，必要的提示词、对话内容及所选图片会经 Cogno 的阿里云函数计算网关转发至对应模型服务商。使用自定义 API 时，请求会发送至用户配置的 API Base URL，服务商将依其自身政策处理数据。\n\n自定义 API Key 保存在设备本地应用配置中，目前未使用端到端加密存储。Cogno 不会把该密钥发送给个人开发者，但会在请求时将其作为鉴权信息发送至用户选择的 API 服务商。请勿在共享或不受信任的设备上保存敏感密钥。"
     ),
     LegalSection(
         "4. 视觉图片临时处理",
@@ -187,7 +187,7 @@ private fun privacySectionsZh() = listOf(
     ),
     LegalSection(
         "5. 系统能力与第三方服务",
-        "相机、相册和文件选择仅在用户主动操作时使用。语音输入由 Android 系统或设备提供的语音识别服务处理，可能受相应系统服务商政策约束。AI 输出、Cloudflare 服务及模型服务商均属于第三方能力，其可用性和数据处理规则不由 Cogno 完全控制。"
+        "相机、相册和文件选择仅在用户主动操作时使用。语音输入由 Android 系统或设备提供的语音识别服务处理，可能受相应系统服务商政策约束。AI 输出、阿里云函数计算、阿里云 OSS 及模型服务商均属于第三方能力，其可用性和数据处理规则不由 Cogno 完全控制。"
     ),
     LegalSection(
         "6. 数据导出与删除",
@@ -249,7 +249,7 @@ private fun termsSectionsZh() = listOf(
 private fun privacySectionsEn() = listOf(
     LegalSection("1. Scope", "This policy applies to the Cogno Android app maintained by the independent Cogno developer. Cogno currently has no account registration, subscription, or developer-operated paid service."),
     LegalSection("2. Local data", "Chats, messages, notes, topics, settings, and chat images are primarily stored in the app's private local storage. They are not uploaded unless you actively use AI, export data, or invoke a system feature."),
-    LegalSection("3. AI and API settings", "Experience-model requests pass necessary prompts, conversation content, and selected images through the Cogno Cloudflare Worker to the relevant model provider. Custom API requests go to the API Base URL you configure. Custom API keys are stored locally and are not currently protected by end-to-end encrypted storage."),
+    LegalSection("3. AI and API settings", "Experience-model requests pass necessary prompts, conversation content, and selected images through the Cogno Alibaba Cloud Function Compute gateway to the relevant model provider. Custom API requests go to the API Base URL you configure. Custom API keys are stored locally and are not currently protected by end-to-end encrypted storage."),
     LegalSection("4. Temporary vision images", "Images sent to an experience vision model are compressed and temporarily stored in Alibaba Cloud OSS in Hong Kong through the Cogno gateway. Signed URLs normally remain valid for about 15 minutes, and objects are retained for no longer than 24 hours. The chat bubble continues to use the local image."),
     LegalSection("5. Export and deletion", "You may export chats and other local data as a ZIP file to a location you select. You may delete records in the app or clear the app's Android data. You are responsible for protecting exported files."),
     LegalSection("6. Contact", "Questions, corrections, and privacy requests may be submitted through the ntoprevd/Cogno GitHub project. Statutory rights are not excluded by this policy.")

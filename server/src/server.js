@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { createHmac, randomUUID } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -18,7 +19,13 @@ const config = {
   dailyRequestLimit: integerEnv("DAILY_REQUEST_LIMIT", 200),
   dailyTokenLimit: integerEnv("DAILY_TOKEN_LIMIT", 1_000_000),
   maxInputChars: integerEnv("MAX_INPUT_CHARS", 60_000),
-  maxOutputTokens: integerEnv("MAX_OUTPUT_TOKENS", 8192)
+  maxOutputTokens: integerEnv("MAX_OUTPUT_TOKENS", 8192),
+  maxImageBytes: integerEnv("MAX_IMAGE_BYTES", 5 * 1024 * 1024),
+  imageUrlTtlSeconds: integerEnv("IMAGE_URL_TTL_SECONDS", 900),
+  ossAccessKeyId: env("OSS_ACCESS_KEY_ID", ""),
+  ossAccessKeySecret: env("OSS_ACCESS_KEY_SECRET", ""),
+  ossBucket: env("OSS_BUCKET", ""),
+  ossEndpoint: env("OSS_ENDPOINT", "")
 };
 
 const providers = {
@@ -53,6 +60,11 @@ const server = createServer(async (request, response) => {
       sendJson(response, 200, {
         data: enabledModels.map(({ provider, upstreamModel, enabled, ...model }) => model)
       });
+      return;
+    }
+
+    if (request.method === "POST" && url.pathname === "/v1/images") {
+      await uploadTemporaryImage(request, response);
       return;
     }
 
@@ -142,6 +154,36 @@ async function proxyChatCompletion(request, response) {
   response.end(text);
 }
 
+async function uploadTemporaryImage(request, response) {
+  if (!hasOssConfig()) throw httpError(503, "图片对象存储尚未配置");
+
+  const contentType = String(request.headers["content-type"] ?? "").split(";")[0].trim();
+  if (!["image/jpeg", "image/png", "image/webp"].includes(contentType)) {
+    throw httpError(415, "仅支持 JPEG、PNG 或 WebP 图片");
+  }
+
+  const bytes = await readBinaryBody(request, config.maxImageBytes);
+  if (bytes.length === 0 || bytes.length > config.maxImageBytes) {
+    throw httpError(413, "图片大小超出限制");
+  }
+
+  const extension = contentType === "image/png" ? "png" : contentType === "image/webp" ? "webp" : "jpg";
+  const key = `temporary/${randomUUID()}.${extension}`;
+  const uploadResponse = await putOssObject(key, bytes, contentType);
+  if (!uploadResponse.ok) {
+    const ossError = await uploadResponse.text();
+    const ossCode = ossError.match(/<Code>([^<]+)<\/Code>/)?.[1] ?? "UnknownError";
+    // 只返回 OSS 错误码，避免把签名、AccessKey 或完整上游响应暴露给客户端。
+    throw httpError(502, `图片上传至 OSS 失败：${ossCode}（HTTP ${uploadResponse.status}）`);
+  }
+
+  const expires = Math.floor(Date.now() / 1000) + config.imageUrlTtlSeconds;
+  sendJson(response, 200, {
+    url: createOssSignedGetUrl(key, expires),
+    expires_at: expires
+  });
+}
+
 function authorize(request) {
   if (!config.appToken) return;
   const auth = String(request.headers.authorization ?? "");
@@ -159,6 +201,68 @@ async function readJsonBody(request) {
   } catch {
     throw httpError(400, "请求体不是有效 JSON");
   }
+}
+
+async function readBinaryBody(request, maxBytes) {
+  const chunks = [];
+  let total = 0;
+  for await (const chunk of request) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    total += buffer.length;
+    if (total > maxBytes) throw httpError(413, "图片大小超出限制");
+    chunks.push(buffer);
+  }
+  return Buffer.concat(chunks, total);
+}
+
+function hasOssConfig() {
+  return Boolean(
+    config.ossAccessKeyId &&
+    config.ossAccessKeySecret &&
+    config.ossBucket &&
+    config.ossEndpoint
+  );
+}
+
+async function putOssObject(key, bytes, contentType) {
+  const date = new Date().toUTCString();
+  const canonicalResource = `/${config.ossBucket}/${key}`;
+  const stringToSign = `PUT\n\n${contentType}\n${date}\n${canonicalResource}`;
+  const signature = hmacSha1Base64(config.ossAccessKeySecret, stringToSign);
+
+  return fetch(ossObjectUrl(key), {
+    method: "PUT",
+    headers: {
+      Authorization: `OSS ${config.ossAccessKeyId}:${signature}`,
+      "Content-Type": contentType,
+      Date: date
+    },
+    body: bytes
+  });
+}
+
+function createOssSignedGetUrl(key, expires) {
+  const canonicalResource = `/${config.ossBucket}/${key}`;
+  const stringToSign = `GET\n\n\n${expires}\n${canonicalResource}`;
+  const signature = hmacSha1Base64(config.ossAccessKeySecret, stringToSign);
+  const params = new URLSearchParams({
+    OSSAccessKeyId: config.ossAccessKeyId,
+    Expires: String(expires),
+    Signature: signature
+  });
+  return `${ossObjectUrl(key)}?${params}`;
+}
+
+function ossObjectUrl(key) {
+  const endpointHost = config.ossEndpoint
+    .replace(/^https?:\/\//, "")
+    .replace(/\/+$/, "");
+  const encodedKey = key.split("/").map(encodeURIComponent).join("/");
+  return `https://${config.ossBucket}.${endpointHost}/${encodedKey}`;
+}
+
+function hmacSha1Base64(secret, value) {
+  return createHmac("sha1", secret).update(value, "utf8").digest("base64");
 }
 
 function getTodayUsage(clientKey) {
