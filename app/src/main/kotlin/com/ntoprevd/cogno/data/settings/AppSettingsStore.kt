@@ -50,12 +50,22 @@ class AppSettingsStore(context: Context) {
             .apply()
     }
 
+    fun shouldShowFirstRunLegalNotice(): Boolean =
+        !preferences.getBoolean(KEY_FIRST_RUN_LEGAL_NOTICE_SHOWN, false)
+
+    fun markFirstRunLegalNoticeShown() {
+        preferences.edit()
+            .putBoolean(KEY_FIRST_RUN_LEGAL_NOTICE_SHOWN, true)
+            .apply()
+    }
+
     companion object {
         private const val PREFERENCES_NAME = "cogno_app_settings"
         private const val KEY_DARK_MODE = "dark_mode"
         private const val KEY_LANGUAGE = "language"
         private const val KEY_USER_NAME = "user_name"
         private const val KEY_AVATAR_URI = "avatar_uri"
+        private const val KEY_FIRST_RUN_LEGAL_NOTICE_SHOWN = "first_run_legal_notice_shown"
         const val DEFAULT_USER_NAME = "Cogno User"
     }
 }

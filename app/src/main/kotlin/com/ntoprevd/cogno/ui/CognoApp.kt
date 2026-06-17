@@ -26,6 +26,7 @@ import com.ntoprevd.cogno.ui.settings.LegalDocumentScreen
 import com.ntoprevd.cogno.ui.settings.LegalDocumentType
 import com.ntoprevd.cogno.ui.settings.SettingsScreen
 import com.ntoprevd.cogno.ui.settings.TopicSettingsScreen
+import com.ntoprevd.cogno.ui.settings.VersionRoadmapScreen
 import com.ntoprevd.cogno.ui.theme.CognoTheme
 
 object CognoRoutes {
@@ -36,6 +37,7 @@ object CognoRoutes {
     const val TOPIC_SETTINGS = "topicSettings"
     const val PRIVACY_POLICY = "privacyPolicy"
     const val TERMS_OF_SERVICE = "termsOfService"
+    const val VERSION_ROADMAP = "versionRoadmap"
     const val NOTE_DETAIL = "noteDetail/{noteId}"
 
     fun noteDetail(noteId: String): String = "noteDetail/$noteId"
@@ -52,6 +54,14 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
     var userName by remember { mutableStateOf(appSettingsStore.loadUserName()) }
     var avatarUri by remember { mutableStateOf(appSettingsStore.loadAvatarUri()) }
     var pendingChatSessionId by remember { mutableStateOf<String?>(null) }
+    var showFirstRunLegalNotice by remember {
+        mutableStateOf(appSettingsStore.shouldShowFirstRunLegalNotice())
+    }
+
+    fun dismissFirstRunLegalNotice() {
+        appSettingsStore.markFirstRunLegalNoticeShown()
+        showFirstRunLegalNotice = false
+    }
 
     CognoTheme(
         darkModePreference = darkModePreference,
@@ -77,6 +87,16 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
                     avatarUri = avatarUri,
                     onOpenNotes = { navController.navigate(CognoRoutes.NOTES) },
                     onOpenSettings = { navController.navigate(CognoRoutes.SETTINGS) },
+                    showFirstRunLegalNotice = showFirstRunLegalNotice,
+                    onDismissFirstRunLegalNotice = ::dismissFirstRunLegalNotice,
+                    onOpenPrivacyPolicy = {
+                        dismissFirstRunLegalNotice()
+                        navController.navigate(CognoRoutes.PRIVACY_POLICY)
+                    },
+                    onOpenTermsOfService = {
+                        dismissFirstRunLegalNotice()
+                        navController.navigate(CognoRoutes.TERMS_OF_SERVICE)
+                    },
                     initialSessionId = pendingChatSessionId,
                     onInitialSessionConsumed = { pendingChatSessionId = null }
                 )
@@ -113,6 +133,7 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
                     onOpenTopics = { navController.navigate(CognoRoutes.TOPIC_SETTINGS) },
                     onOpenPrivacyPolicy = { navController.navigate(CognoRoutes.PRIVACY_POLICY) },
                     onOpenTermsOfService = { navController.navigate(CognoRoutes.TERMS_OF_SERVICE) },
+                    onOpenVersionRoadmap = { navController.navigate(CognoRoutes.VERSION_ROADMAP) },
                     darkModePreference = darkModePreference,
                     onDarkModePreferenceChange = { value ->
                         appSettingsStore.saveDarkModePreference(value)
@@ -155,6 +176,12 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
             composable(route = CognoRoutes.TERMS_OF_SERVICE) {
                 LegalDocumentScreen(
                     type = LegalDocumentType.TERMS_OF_SERVICE,
+                    languagePreference = languagePreference,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable(route = CognoRoutes.VERSION_ROADMAP) {
+                VersionRoadmapScreen(
                     languagePreference = languagePreference,
                     onBack = { navController.popBackStack() }
                 )

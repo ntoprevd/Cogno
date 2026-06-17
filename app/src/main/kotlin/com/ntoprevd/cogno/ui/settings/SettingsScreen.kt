@@ -1,5 +1,6 @@
 package com.ntoprevd.cogno.ui.settings
 
+import android.content.Intent
 import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -61,6 +62,7 @@ import androidx.compose.ui.unit.sp
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import com.ntoprevd.cogno.BuildConfig
 import com.ntoprevd.cogno.data.db.AppDatabase
 import com.ntoprevd.cogno.data.export.DataExportManager
 import com.ntoprevd.cogno.data.export.DataExportMode
@@ -160,9 +162,9 @@ private fun settingsCopy(languagePreference: String): SettingsCopy {
             responseStyle = "Response Style",
             appearance = "Appearance",
             language = "Language Settings",
-            clearCache = "Clear Cache",
-            safeMode = "Safe Mode",
-            cacheSafetyNote = "This safe entry only reports temporary cache and does not clear chats, messages, notes, or API settings.",
+            clearCache = "Manage temporary cache",
+            safeMode = "System settings",
+            cacheSafetyNote = "Open Android app settings, then use Storage & cache to clear temporary files safely. Chats, notes, and API settings are not affected.",
             systemPrompt = "System Prompt"
         )
     } else {
@@ -196,9 +198,9 @@ private fun settingsCopy(languagePreference: String): SettingsCopy {
             responseStyle = "输出风格",
             appearance = "外观显示",
             language = "语言设置",
-            clearCache = "清理缓存",
-            safeMode = "安全模式",
-            cacheSafetyNote = "安全版本只处理临时缓存入口，不清空聊天、消息、笔记和 API 配置。",
+            clearCache = "管理临时缓存",
+            safeMode = "系统设置",
+            cacheSafetyNote = "点击后进入 Android 系统应用信息页，可在“存储与缓存”中安全清除临时文件；聊天、笔记和 API 配置不会受影响。",
             systemPrompt = "系统提示词"
         )
     }
@@ -212,6 +214,7 @@ fun SettingsScreen(
     onOpenTopics: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
     onOpenTermsOfService: () -> Unit,
+    onOpenVersionRoadmap: () -> Unit,
     darkModePreference: String,
     onDarkModePreferenceChange: (String) -> Unit,
     languagePreference: String,
@@ -250,6 +253,11 @@ fun SettingsScreen(
     var testStatus by remember(languagePreference) { mutableStateOf("") }
     var cacheStatus by remember(languagePreference) {
         mutableStateOf("${copy.cacheStatusPrefix}${formatBytes(cacheSizeBytes(context.cacheDir))}")
+    }
+    val cacheSettingsLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        cacheStatus = "${copy.cacheStatusPrefix}${formatBytes(cacheSizeBytes(context.cacheDir))}"
     }
     var modelDialogVisible by remember { mutableStateOf(false) }
     var sourceModeDialogVisible by remember { mutableStateOf(false) }
@@ -660,7 +668,11 @@ fun SettingsScreen(
                     isDark = isDark,
                     copy = copy,
                     onClick = {
-                        cacheStatus = "${copy.cacheStatusPrefix}${formatBytes(cacheSizeBytes(context.cacheDir))}${copy.cacheStatusSuffix}"
+                        cacheSettingsLauncher.launch(
+                            Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:${context.packageName}")
+                            }
+                        )
                     }
                 )
             }
@@ -671,7 +683,16 @@ fun SettingsScreen(
                     .padding(top = 10.dp, bottom = 34.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Text("Cogno v1.1.0-stable", color = CognoMuted, fontSize = 12.sp)
+                Text(
+                    text = "Cogno v${BuildConfig.VERSION_NAME}",
+                    color = if (isDark) CognoDarkPrimary else CognoPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onOpenVersionRoadmap)
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                )
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(

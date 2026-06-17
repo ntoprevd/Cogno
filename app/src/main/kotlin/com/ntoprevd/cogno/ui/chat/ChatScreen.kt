@@ -191,6 +191,14 @@ private data class PendingAttachment(
     val isImage: Boolean
 )
 
+private data class FirstRunLegalCopy(
+    val title: String,
+    val message: String,
+    val privacyPolicy: String,
+    val termsOfService: String,
+    val close: String
+)
+
 private data class ChatScreenCopy(
     val openSidebar: String,
     val generateNote: String,
@@ -419,6 +427,10 @@ fun ChatScreen(
     avatarUri: String,
     onOpenNotes: () -> Unit,
     onOpenSettings: () -> Unit,
+    showFirstRunLegalNotice: Boolean = false,
+    onDismissFirstRunLegalNotice: () -> Unit = {},
+    onOpenPrivacyPolicy: () -> Unit = {},
+    onOpenTermsOfService: () -> Unit = {},
     initialSessionId: String? = null,
     onInitialSessionConsumed: () -> Unit = {},
     viewModel: ChatViewModel = viewModel()
@@ -643,6 +655,116 @@ fun ChatScreen(
                     pendingDeleteSession = null
                 }
             )
+        }
+
+        if (showFirstRunLegalNotice) {
+            FirstRunLegalNoticeDialog(
+                languagePreference = languagePreference,
+                isDark = isDark,
+                onDismiss = onDismissFirstRunLegalNotice,
+                onOpenPrivacyPolicy = onOpenPrivacyPolicy,
+                onOpenTermsOfService = onOpenTermsOfService
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FirstRunLegalNoticeDialog(
+    languagePreference: String,
+    isDark: Boolean,
+    onDismiss: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
+    onOpenTermsOfService: () -> Unit
+) {
+    val copy = if (languagePreference == AppLanguagePreference.EN) {
+        FirstRunLegalCopy(
+            title = "Welcome to Cogno",
+            message = "To understand how Cogno handles local data, AI requests, and temporary vision images, please review the following documents. You can open them again from Settings at any time.",
+            privacyPolicy = "Privacy Policy",
+            termsOfService = "Terms of Service",
+            close = "Close"
+        )
+    } else {
+        FirstRunLegalCopy(
+            title = "欢迎使用 Cogno",
+            message = "为了帮助你了解 Cogno 如何处理本地数据、AI 请求和临时视觉图片，请阅读以下说明。你可以随时在设置页再次查看。",
+            privacyPolicy = "隐私政策",
+            termsOfService = "服务条款",
+            close = "关闭"
+        )
+    }
+    val textColor = if (isDark) CognoDarkText else CognoText
+    val accent = if (isDark) CognoDarkPrimary else CognoPrimary
+
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(22.dp),
+            shadowElevation = 18.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) CognoDarkLine else CognoLine,
+                    shape = RoundedCornerShape(22.dp)
+                )
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = copy.title,
+                        color = textColor,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = copy.close,
+                            tint = CognoMuted,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = copy.message,
+                    color = textColor.copy(alpha = 0.78f),
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                Text(
+                    text = copy.privacyPolicy,
+                    color = accent,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onOpenPrivacyPolicy)
+                        .padding(vertical = 7.dp)
+                )
+                Text(
+                    text = copy.termsOfService,
+                    color = accent,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onOpenTermsOfService)
+                        .padding(vertical = 7.dp)
+                )
+            }
         }
     }
 }
