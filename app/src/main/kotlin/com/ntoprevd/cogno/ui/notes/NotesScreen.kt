@@ -230,6 +230,10 @@ private data class NotesScreenCopy(
     val unpin: String,
     val rename: String,
     val delete: String,
+    val deleteNoteTitle: String,
+    val deleteNoteMessage: (String) -> String,
+    val deleteTopicTitle: String,
+    val deleteTopicMessage: (String) -> String,
     val view: String,
     val edit: String,
     val share: String,
@@ -269,6 +273,10 @@ private fun notesScreenCopy(languagePreference: String): NotesScreenCopy {
             unpin = "Unpin",
             rename = "Rename",
             delete = "Delete",
+            deleteNoteTitle = "Delete note",
+            deleteNoteMessage = { title -> "Delete \"$title\"? This cannot be undone." },
+            deleteTopicTitle = "Delete topic",
+            deleteTopicMessage = { title -> "Delete \"$title\" and its fragments? This cannot be undone." },
             view = "View",
             edit = "Edit",
             share = "Share",
@@ -306,6 +314,10 @@ private fun notesScreenCopy(languagePreference: String): NotesScreenCopy {
             unpin = "取消置顶",
             rename = "重命名",
             delete = "删除",
+            deleteNoteTitle = "确认删除",
+            deleteNoteMessage = { title -> "确定删除“$title”吗？此操作不可撤销。" },
+            deleteTopicTitle = "确认删除",
+            deleteTopicMessage = { title -> "确定删除“$title”及其片段吗？此操作不可撤销。" },
             view = "查看",
             edit = "编辑",
             share = "分享",
@@ -341,6 +353,8 @@ fun NotesScreen(
     var selectedTopic by remember { mutableStateOf<TopicGroup?>(null) }
     var topicRenameTarget by remember { mutableStateOf<TopicGroup?>(null) }
     var topicRenameText by remember { mutableStateOf("") }
+    var pendingDeleteNote by remember { mutableStateOf<NoteEntity?>(null) }
+    var pendingDeleteTopic by remember { mutableStateOf<TopicGroup?>(null) }
 
     // 主题详情是笔记库内的页面状态，系统返回键应先回到主题列表。
     BackHandler(enabled = selectedTopic != null) {
@@ -457,8 +471,7 @@ fun NotesScreen(
                                 viewModel.toggleTopicPinned(group.topic)
                             },
                             onDelete = {
-                                viewModel.deleteTopic(group.topic)
-                                if (selectedTopic?.key == group.key) selectedTopic = null
+                                pendingDeleteTopic = group
                             }
                         )
                     }
@@ -490,7 +503,7 @@ fun NotesScreen(
                                 renameText = note.title
                             },
                             onTogglePin = { viewModel.togglePinned(note) },
-                            onDelete = { viewModel.deleteNote(note.id) }
+                            onDelete = { pendingDeleteNote = note }
                         )
                     }
                 }
@@ -542,6 +555,35 @@ fun NotesScreen(
                         viewModel.renameTopic(group.topic, nextTitle)
                     }
                     topicRenameTarget = null
+                }
+            )
+        }
+        pendingDeleteNote?.let { note ->
+            DeleteConfirmDialog(
+                title = copy.deleteNoteTitle,
+                message = copy.deleteNoteMessage(note.title),
+                isDark = isDark,
+                cancelText = copy.cancel,
+                confirmText = copy.confirm,
+                onDismiss = { pendingDeleteNote = null },
+                onConfirm = {
+                    viewModel.deleteNote(note.id)
+                    pendingDeleteNote = null
+                }
+            )
+        }
+        pendingDeleteTopic?.let { group ->
+            DeleteConfirmDialog(
+                title = copy.deleteTopicTitle,
+                message = copy.deleteTopicMessage(group.topic),
+                isDark = isDark,
+                cancelText = copy.cancel,
+                confirmText = copy.confirm,
+                onDismiss = { pendingDeleteTopic = null },
+                onConfirm = {
+                    viewModel.deleteTopic(group.topic)
+                    if (selectedTopic?.key == group.key) selectedTopic = null
+                    pendingDeleteTopic = null
                 }
             )
         }
@@ -1419,6 +1461,82 @@ private fun ContextMenuAction(
             fontSize = 14.sp,
             modifier = Modifier.weight(1f)
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeleteConfirmDialog(
+    title: String,
+    message: String,
+    isDark: Boolean,
+    cancelText: String,
+    confirmText: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(22.dp),
+            shadowElevation = 18.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) CognoDarkLine else CognoLine,
+                    shape = RoundedCornerShape(22.dp)
+                )
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    text = title,
+                    color = if (isDark) CognoDarkText else CognoText,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = message,
+                    color = if (isDark) CognoDarkText.copy(alpha = 0.78f) else CognoText.copy(alpha = 0.78f),
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = cancelText,
+                        color = if (isDark) CognoDarkText else CognoText,
+                        textAlign = TextAlign.Center,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(
+                                width = 1.dp,
+                                color = if (isDark) CognoDarkLine else CognoLine,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 12.dp)
+                    )
+                    Text(
+                        text = confirmText,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFE24A4A))
+                            .clickable(onClick = onConfirm)
+                            .padding(vertical = 12.dp)
+                    )
+                }
+            }
+        }
     }
 }
 

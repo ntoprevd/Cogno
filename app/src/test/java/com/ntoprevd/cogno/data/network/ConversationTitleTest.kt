@@ -14,7 +14,7 @@ class ConversationTitleTest {
 
     @Test
     fun limitsUnexpectedlyLongTitle() {
-        assertEquals(15, sanitizeConversationTitle("很长".repeat(30)).length)
+        assertEquals(24, sanitizeConversationTitle("很长".repeat(30)).length)
     }
 
     @Test

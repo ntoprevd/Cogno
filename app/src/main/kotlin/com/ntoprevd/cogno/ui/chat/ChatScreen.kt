@@ -128,6 +128,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -246,6 +247,8 @@ private data class ChatScreenCopy(
     val unpin: String,
     val rename: String,
     val delete: String,
+    val deleteSessionTitle: String,
+    val deleteSessionMessage: (String) -> String,
     val settings: String,
     val messageTimePattern: String,
     val messageTimeLocale: Locale,
@@ -311,6 +314,8 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
             unpin = "Unpin",
             rename = "Rename",
             delete = "Delete",
+            deleteSessionTitle = "Delete chat",
+            deleteSessionMessage = { title -> "Delete \"$title\"? This cannot be undone." },
             settings = "Settings",
             messageTimePattern = "MMM d, yyyy HH:mm",
             messageTimeLocale = Locale.US,
@@ -318,7 +323,11 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
                 "Think it through. Keep what matters.",
                 "Questions become conversations. Conversations become memory.",
                 "Catch the spark before it disappears.",
-                "Bring the loose thoughts. Cogno will shape them."
+                "Bring the loose thoughts. Cogno will shape them.",
+                "A clearer thread starts with one honest question.",
+                "Gather fragments. Find the line between them.",
+                "Where scattered notes begin to remember.",
+                "Let the thought arrive before it has a name."
             ),
             legacyWelcome = "Bring questions, ideas, and loose thoughts here.\nCogno will turn them into conversation first, then organize them into notes."
         )
@@ -379,6 +388,8 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
             unpin = "取消置顶",
             rename = "重命名",
             delete = "删除",
+            deleteSessionTitle = "确认删除",
+            deleteSessionMessage = { title -> "确定删除“$title”吗？此操作不可撤销。" },
             settings = "设置",
             messageTimePattern = "yyyy年M月d日 HH:mm",
             messageTimeLocale = Locale.CHINA,
@@ -387,7 +398,13 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
                 "把零散想法，沉淀成清晰笔记。",
                 "Questions become conversations. Conversations become memory.",
                 "慢慢说，Cogno 会帮你整理脉络。",
-                "Catch the spark before it disappears."
+                "Catch the spark before it disappears.",
+                "先把念头放下，脉络会慢慢显形。",
+                "从片段出发，找到真正的问题。",
+                "让对话生长成可以回看的记忆。",
+                "散开的信息，也能重新连成线。",
+                "想法不必完整，先让它被看见。",
+                "把来源片段，聚成一个清楚的主题。"
             ),
             legacyWelcome = "把问题、灵感和碎片想法都放进来。\nCogno 会先帮你沉淀成对话，之后再整理成笔记。"
         )
@@ -415,6 +432,7 @@ fun ChatScreen(
     var attachmentMenuVisible by remember { mutableStateOf(false) }
     var pendingAttachment by remember { mutableStateOf<PendingAttachment?>(null) }
     var pendingCameraUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingDeleteSession by remember { mutableStateOf<SessionEntity?>(null) }
 
     fun selectDocument(uri: Uri, isImage: Boolean) {
         runCatching {
@@ -559,7 +577,7 @@ fun ChatScreen(
             onSelectSession = viewModel::selectSession,
             onRenameSession = viewModel::renameSession,
             onTogglePinSession = viewModel::toggleSessionPinned,
-            onDeleteSession = viewModel::deleteSession,
+            onDeleteSession = { session -> pendingDeleteSession = session },
             onOpenNotes = {
                 viewModel.closeDrawer()
                 onOpenNotes()
@@ -608,6 +626,21 @@ fun ChatScreen(
                 onFiles = {
                     attachmentMenuVisible = false
                     filePicker.launch(arrayOf("*/*"))
+                }
+            )
+        }
+
+        pendingDeleteSession?.let { session ->
+            DeleteConfirmDialog(
+                title = copy.deleteSessionTitle,
+                message = copy.deleteSessionMessage(session.title),
+                isDark = isDark,
+                cancelText = copy.cancel,
+                confirmText = copy.confirm,
+                onDismiss = { pendingDeleteSession = null },
+                onConfirm = {
+                    viewModel.deleteSession(session.id)
+                    pendingDeleteSession = null
                 }
             )
         }
@@ -967,7 +1000,8 @@ private fun BrandWelcomeView(isDark: Boolean, copy: ChatScreenCopy) {
             color = if (isDark) CognoDarkText.copy(alpha = 0.88f) else CognoText.copy(alpha = 0.86f),
             fontSize = 25.sp,
             lineHeight = 34.sp,
-            fontWeight = FontWeight.SemiBold,
+            fontFamily = FontFamily.Serif,
+            fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
             letterSpacing = 0.sp,
             minLines = 2,
@@ -982,45 +1016,32 @@ private fun CognoMark(
     modifier: Modifier = Modifier
 ) {
     val primary = if (isDark) CognoDarkPrimary else CognoPrimary
-    val ink = if (isDark) CognoDarkText else CognoText
+    val nodeSoft = if (isDark) Color(0xFFFFAA64) else Color(0xFFFFAA64)
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        val center = androidx.compose.ui.geometry.Offset(w / 2f, h / 2f)
-        drawCircle(
-            color = primary.copy(alpha = if (isDark) 0.16f else 0.12f),
-            radius = w * 0.46f,
-            center = center
-        )
-        drawCircle(
-            color = primary.copy(alpha = 0.30f),
-            radius = w * 0.34f,
-            center = center,
-            style = Stroke(width = w * 0.035f)
-        )
-        drawCircle(
-            color = ink.copy(alpha = if (isDark) 0.28f else 0.18f),
-            radius = w * 0.22f,
-            center = center,
-            style = Stroke(width = w * 0.018f)
-        )
-        val gem = Path().apply {
-            moveTo(w * 0.50f, h * 0.23f)
-            cubicTo(w * 0.70f, h * 0.34f, w * 0.78f, h * 0.50f, w * 0.50f, h * 0.77f)
-            cubicTo(w * 0.22f, h * 0.50f, w * 0.30f, h * 0.34f, w * 0.50f, h * 0.23f)
-            close()
+        val thread = Path().apply {
+            moveTo(w * 0.635f, h * 0.254f)
+            cubicTo(w * 0.488f, h * 0.195f, w * 0.322f, h * 0.293f, w * 0.293f, h * 0.459f)
+            cubicTo(w * 0.254f, h * 0.684f, w * 0.459f, h * 0.801f, w * 0.635f, h * 0.723f)
         }
-        drawPath(gem, color = primary)
         drawCircle(
-            color = Color.White.copy(alpha = if (isDark) 0.86f else 0.96f),
-            radius = w * 0.055f,
-            center = androidx.compose.ui.geometry.Offset(w * 0.44f, h * 0.47f)
+            color = Color(0xFFFFF7EC).copy(alpha = if (isDark) 0.08f else 1.0f),
+            radius = w * 0.45f,
+            center = Offset(w * 0.52f, h * 0.52f)
         )
-        drawCircle(
-            color = Color.White.copy(alpha = if (isDark) 0.72f else 0.86f),
-            radius = w * 0.04f,
-            center = androidx.compose.ui.geometry.Offset(w * 0.60f, h * 0.54f)
+        drawPath(
+            path = thread,
+            color = primary,
+            style = Stroke(width = w * 0.057f)
         )
+        listOf(
+            Triple(Offset(w * 0.635f, h * 0.254f), w * 0.037f, primary),
+            Triple(Offset(w * 0.293f, h * 0.459f), w * 0.039f, nodeSoft),
+            Triple(Offset(w * 0.635f, h * 0.723f), w * 0.037f, primary)
+        ).forEach { (center, radius, color) ->
+            drawCircle(color = color, radius = radius, center = center)
+        }
     }
 }
 
@@ -2073,7 +2094,7 @@ private fun SidebarDrawer(
     onSelectSession: (String) -> Unit,
     onRenameSession: (String, String) -> Unit,
     onTogglePinSession: (SessionEntity) -> Unit,
-    onDeleteSession: (String) -> Unit,
+    onDeleteSession: (SessionEntity) -> Unit,
     onOpenNotes: () -> Unit,
     onOpenSettings: () -> Unit,
     userName: String,
@@ -2262,7 +2283,7 @@ private fun SidebarDrawer(
                                         renameText = session.title
                                     },
                                     onTogglePin = { onTogglePinSession(session) },
-                                    onDelete = { onDeleteSession(session.id) }
+                                    onDelete = { onDeleteSession(session) }
                                 )
                             }
                         }
@@ -2524,6 +2545,82 @@ private fun ContextMenuAction(
             fontSize = 14.sp,
             modifier = Modifier.weight(1f)
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DeleteConfirmDialog(
+    title: String,
+    message: String,
+    isDark: Boolean,
+    cancelText: String,
+    confirmText: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(22.dp),
+            shadowElevation = 18.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .border(
+                    width = 1.dp,
+                    color = if (isDark) CognoDarkLine else CognoLine,
+                    shape = RoundedCornerShape(22.dp)
+                )
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    text = title,
+                    color = if (isDark) CognoDarkText else CognoText,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = message,
+                    color = if (isDark) CognoDarkText.copy(alpha = 0.78f) else CognoText.copy(alpha = 0.78f),
+                    fontSize = 14.sp,
+                    lineHeight = 22.sp
+                )
+                Spacer(modifier = Modifier.height(18.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = cancelText,
+                        color = if (isDark) CognoDarkText else CognoText,
+                        textAlign = TextAlign.Center,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .border(
+                                width = 1.dp,
+                                color = if (isDark) CognoDarkLine else CognoLine,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 12.dp)
+                    )
+                    Text(
+                        text = confirmText,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 15.sp,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Color(0xFFE24A4A))
+                            .clickable(onClick = onConfirm)
+                            .padding(vertical = 12.dp)
+                    )
+                }
+            }
+        }
     }
 }
 

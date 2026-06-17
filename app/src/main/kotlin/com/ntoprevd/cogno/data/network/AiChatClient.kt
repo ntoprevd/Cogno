@@ -190,8 +190,15 @@ class AiChatClient(context: Context) {
         conversationText: String
     ): String = withContext(Dispatchers.IO) {
         validateSettings(settings)
+        // 推理/视觉模型会先消耗 reasoning tokens，短标题请求可能因此拿不到 content。
+        // 体验模式统一交给轻量文本模型生成标题，避免当前聊天模型影响侧边栏命名。
+        val titleModel = if (settings.sourceMode == AiSourceMode.EXPERIENCE) {
+            EXPERIENCE_TITLE_MODEL
+        } else {
+            settings.modelId
+        }
         val body = JSONObject()
-            .put("model", settings.modelId)
+            .put("model", titleModel)
             .put(
                 "messages",
                 JSONArray()
@@ -202,14 +209,14 @@ class AiChatClient(context: Context) {
                                 "content",
                                 "请根据用户与 AI 的前一至两轮对话生成一个准确、自然的中文会话标题。" +
                                     "概括核心意图，不要直接照抄用户首句；" +
-                                    "只返回标题，不加引号、解释、标点或 Markdown；严格控制在 4 至 15 个汉字。"
+                                    "只返回标题，不加引号、解释、标点或 Markdown；控制在 4 至 18 个汉字。"
                             )
                     )
                     .put(JSONObject().put("role", "user").put("content", conversationText))
             )
             .put("stream", false)
             .put("temperature", NOTE_TEMPERATURE)
-            .put("max_tokens", 48)
+            .put("max_tokens", 128)
         sanitizeConversationTitle(executeTextCompletion(settings, body))
     }
 
@@ -664,6 +671,7 @@ class AiChatClient(context: Context) {
         private const val GLM_REQUEST_MIN_QUALITY = 35
         private const val GLM_REQUEST_MAX_BYTES = 48 * 1024
         private const val NOTE_TEMPERATURE = 0.2
+        private const val EXPERIENCE_TITLE_MODEL = "glm-4-flash"
         private const val NOTE_MAX_TOKENS_CONCISE = 1_000
         private const val NOTE_MAX_TOKENS_STANDARD = 1_800
         private const val NOTE_MAX_TOKENS_DETAILED = 2_800
@@ -706,7 +714,7 @@ internal fun sanitizeConversationTitle(raw: String): String {
     return normalized.take(MAX_CONVERSATION_TITLE_LENGTH)
 }
 
-private const val MAX_CONVERSATION_TITLE_LENGTH = 15
+private const val MAX_CONVERSATION_TITLE_LENGTH = 24
 
 data class AiChatResponse(
     val content: String,
