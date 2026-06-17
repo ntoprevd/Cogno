@@ -5,15 +5,14 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- API credentials are device-bound and must never enter cloud backups. -->
+        <exclude domain="sharedpref" path="cogno_ai_settings.xml"/>
+        <exclude domain="database" path="cogno.db"/>
+        <exclude domain="file" path="chat_images"/>
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <exclude domain="sharedpref" path="cogno_ai_settings.xml"/>
+        <exclude domain="database" path="cogno.db"/>
+        <exclude domain="file" path="chat_images"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

@@ -6,8 +6,9 @@
    See https://developer.android.com/about/versions/12/backup-restore
 -->
 <full-backup-content>
-    <!--
-   <include domain="sharedpref" path="."/>
-   <exclude domain="sharedpref" path="device.xml"/>
--->
+    <!-- API credentials are device-bound and must never enter cloud backups. -->
+    <exclude domain="sharedpref" path="cogno_ai_settings.xml"/>
+    <!-- Conversations, notes and attached images remain local unless the user exports them. -->
+    <exclude domain="database" path="cogno.db"/>
+    <exclude domain="file" path="chat_images"/>
 </full-backup-content>

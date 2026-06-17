@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- 1. 添加联网权限（必须在 application 标签外面） -->
+    <!-- Network access is reserved for later AI/API integration. -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- 如果以后要语音输入，建议也顺便加上这个 -->
+    <!-- Required by the chat input's Android SpeechRecognizer integration. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <queries>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -16,17 +21,28 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.Cogno"
-        android:usesCleartextTraffic="${usesCleartextTraffic}" > <!-- Debug 可走明文调试，Release 默认禁用明文流量。 -->
+        android:usesCleartextTraffic="${usesCleartextTraffic}">
 
         <activity
             android:name=".MainActivity"
+            android:configChanges="orientation|screenSize|uiMode"
             android:exported="true"
-            android:configChanges="orientation|screenSize|uiMode"> <!-- 3. 防止旋转屏幕或切换深色模式时页面重载 -->
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 
 </manifest>
