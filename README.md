@@ -12,7 +12,7 @@ Cogno 是一个 Kotlin + Jetpack Compose 原生 Android 项目。它围绕“对
 
 前往 [GitHub Releases](https://github.com/ntoprevd/Cogno/releases/latest) 下载最新签名 APK。
 
-- 当前版本：`v1.0.0`
+- 当前版本：`v1.0.1`
 - 最低系统：Android 10（API 29）
 - 安装 APK 时，Android 可能要求授权当前文件管理器“安装未知应用”。
 
