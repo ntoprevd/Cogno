@@ -81,6 +81,10 @@ private data class NoteDetailCopy(
     val view: String,
     val edit: String,
     val openChat: String,
+    val openChatConfirmTitle: String,
+    val openChatConfirmMessage: String,
+    val cancel: String,
+    val continueAction: String,
     val share: String,
     val timePattern: String,
     val timeLocale: Locale,
@@ -96,6 +100,10 @@ private fun noteDetailCopy(languagePreference: String): NoteDetailCopy {
             view = "View",
             edit = "Edit",
             openChat = "Open source chat",
+            openChatConfirmTitle = "Open source chat?",
+            openChatConfirmMessage = "This button returns to the chat that generated this note. Continue?",
+            cancel = "Cancel",
+            continueAction = "Continue",
             share = "Share",
             timePattern = "MMM d, yyyy HH:mm",
             timeLocale = Locale.US,
@@ -109,6 +117,10 @@ private fun noteDetailCopy(languagePreference: String): NoteDetailCopy {
             view = "查看",
             edit = "编辑",
             openChat = "跳转对话",
+            openChatConfirmTitle = "跳转到来源对话？",
+            openChatConfirmMessage = "此按钮会跳转到生成这篇笔记的对应对话。是否继续？",
+            cancel = "取消",
+            continueAction = "继续",
             share = "分享",
             timePattern = "yyyy年M月d日 HH:mm",
             timeLocale = Locale.CHINA,
@@ -136,6 +148,7 @@ fun NoteDetailScreen(
     var isEditing by remember { mutableStateOf(false) }
     var editValue by remember { mutableStateOf(TextFieldValue()) }
     var exportDialogVisible by remember { mutableStateOf(false) }
+    var openChatConfirmationVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(note?.id) {
         val content = note?.content.orEmpty()
@@ -166,7 +179,7 @@ fun NoteDetailScreen(
                     isEditing = true
                 }
             },
-            onOpenChat = { onOpenChat(note?.sourceSessionId) },
+            onOpenChat = { openChatConfirmationVisible = true },
             onExport = { if (note != null) exportDialogVisible = true }
         )
         Column(
@@ -246,6 +259,20 @@ fun NoteDetailScreen(
             }
         )
     }
+    if (openChatConfirmationVisible) {
+        NoteActionConfirmDialog(
+            isDark = isDark,
+            title = copy.openChatConfirmTitle,
+            message = copy.openChatConfirmMessage,
+            cancelText = copy.cancel,
+            confirmText = copy.continueAction,
+            onDismiss = { openChatConfirmationVisible = false },
+            onConfirm = {
+                openChatConfirmationVisible = false
+                onOpenChat(note?.sourceSessionId)
+            }
+        )
+    }
 }
 
 @Composable
@@ -287,6 +314,65 @@ private fun NoteDetailTopBar(
             }
             IconButton(onClick = onExport) {
                 Icon(Icons.Default.IosShare, contentDescription = copy.share, tint = if (isDark) CognoDarkPrimary else CognoPrimary)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun NoteActionConfirmDialog(
+    isDark: Boolean,
+    title: String,
+    message: String,
+    cancelText: String,
+    confirmText: String,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(22.dp),
+            shadowElevation = 18.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 30.dp)
+                .border(1.dp, if (isDark) CognoDarkLine else CognoLine, RoundedCornerShape(22.dp))
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Text(
+                    text = title,
+                    color = if (isDark) CognoDarkText else CognoText,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(text = message, color = CognoMuted, fontSize = 13.sp, lineHeight = 19.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = cancelText,
+                        color = if (isDark) CognoDarkText else CognoText,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 12.dp)
+                    )
+                    Text(
+                        text = confirmText,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (isDark) CognoDarkPrimary else CognoPrimary)
+                            .clickable(onClick = onConfirm)
+                            .padding(vertical = 12.dp)
+                    )
+                }
             }
         }
     }

@@ -10,6 +10,7 @@ import com.ntoprevd.cogno.data.db.entity.NoteEntity
 import com.ntoprevd.cogno.data.db.entity.SessionEntity
 import com.ntoprevd.cogno.data.media.ChatImageStore
 import com.ntoprevd.cogno.data.network.AiChatClient
+import com.ntoprevd.cogno.data.network.AiEmptyContentException
 import com.ntoprevd.cogno.data.network.AiRequestCancelledException
 import com.ntoprevd.cogno.data.settings.AiSettingsStore
 import java.util.UUID
@@ -389,7 +390,7 @@ class NativeChatRepository(context: Context) {
             assistantMessage.updatedAt = now
             messageDao.updateMessage(assistantMessage)
 
-            aiChatClient.streamChatCompletion(settings, messages) { delta ->
+            suspend fun requestStream() = aiChatClient.streamChatCompletion(settings, messages) { delta ->
                 streamedContent.append(delta)
                 val elapsed = SystemClock.elapsedRealtime()
                 val hasEnoughText = streamedContent.length - lastPersistedLength >= STREAM_WRITE_CHARS
@@ -401,6 +402,14 @@ class NativeChatRepository(context: Context) {
                     lastPersistedLength = streamedContent.length
                 }
             }
+            val response = try {
+                requestStream()
+            } catch (error: AiEmptyContentException) {
+                // 空流通常是上游瞬时异常；首轮没有任何正文时仅重试一次，不扩散到其他错误。
+                if (streamedContent.isNotBlank()) throw error
+                requestStream()
+            }
+            response
         }.onSuccess { response ->
             val assistantMessage = messageDao.getMessageById(assistantMessageId) ?: return
             val completedAt = System.currentTimeMillis()

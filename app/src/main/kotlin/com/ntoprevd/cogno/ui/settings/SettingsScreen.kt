@@ -755,7 +755,10 @@ fun SettingsScreen(
             onSelect = { value ->
                 sourceMode = value
                 modelId = if (value == AiSourceMode.EXPERIENCE) {
-                    experienceModelOptions.firstOrNull()?.value ?: "glm-4-flash"
+                    experienceModelOptions
+                        .firstOrNull { it.value == AiSettings.DEFAULT_EXPERIENCE_MODEL_ID }
+                        ?.value
+                        ?: AiSettings.DEFAULT_EXPERIENCE_MODEL_ID
                 } else {
                     CustomAiProvider.modelPresets(customProvider).firstOrNull()
                         ?: modelId

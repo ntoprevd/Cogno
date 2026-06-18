@@ -17,7 +17,10 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.ntoprevd.cogno.data.settings.AppSettingsStore
+import com.ntoprevd.cogno.data.settings.AiSettings
 import com.ntoprevd.cogno.data.settings.AiSettingsStore
+import com.ntoprevd.cogno.data.settings.AiSourceMode
+import com.ntoprevd.cogno.data.settings.CustomAiProvider
 import com.ntoprevd.cogno.ui.chat.ChatScreen
 import com.ntoprevd.cogno.ui.notes.NoteDetailScreen
 import com.ntoprevd.cogno.ui.notes.NotesScreen
@@ -50,7 +53,7 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
     val aiSettingsStore = remember(context) { AiSettingsStore(context) }
     var darkModePreference by remember { mutableStateOf(appSettingsStore.loadDarkModePreference()) }
     var languagePreference by remember { mutableStateOf(appSettingsStore.loadLanguagePreference()) }
-    var currentModelId by remember { mutableStateOf(aiSettingsStore.load().modelId) }
+    var currentAiSettings by remember { mutableStateOf(aiSettingsStore.load()) }
     var userName by remember { mutableStateOf(appSettingsStore.loadUserName()) }
     var avatarUri by remember { mutableStateOf(appSettingsStore.loadAvatarUri()) }
     var pendingChatSessionId by remember { mutableStateOf<String?>(null) }
@@ -81,7 +84,13 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
         ) {
             composable(route = CognoRoutes.CHAT) {
                 ChatScreen(
-                    currentModelId = currentModelId,
+                    currentModelId = currentAiSettings.modelId,
+                    modelOptions = quickModelOptions(currentAiSettings),
+                    onModelSelected = { modelId ->
+                        val nextSettings = currentAiSettings.copy(modelId = modelId)
+                        aiSettingsStore.save(nextSettings)
+                        currentAiSettings = nextSettings
+                    },
                     languagePreference = languagePreference,
                     userName = userName,
                     avatarUri = avatarUri,
@@ -105,7 +114,8 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
                 NotesScreen(
                     languagePreference = languagePreference,
                     onBack = { navController.popBackStack() },
-                    onOpenNote = { noteId -> navController.navigate(CognoRoutes.noteDetail(noteId)) }
+                    onOpenNote = { noteId -> navController.navigate(CognoRoutes.noteDetail(noteId)) },
+                    onOpenTopicSettings = { navController.navigate(CognoRoutes.TOPIC_SETTINGS) }
                 )
             }
             composable(
@@ -144,7 +154,7 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
                         appSettingsStore.saveLanguagePreference(value)
                         languagePreference = value
                     },
-                    onAiSettingsChanged = { currentModelId = aiSettingsStore.load().modelId },
+                    onAiSettingsChanged = { currentAiSettings = aiSettingsStore.load() },
                     onBack = { navController.popBackStack() }
                 )
             }
@@ -188,4 +198,16 @@ fun CognoApp(onDarkModeChanged: (Boolean) -> Unit) {
             }
         }
     }
+}
+
+/** 顶栏只展示当前模型平台内的快捷选项，完整配置仍留在设置页。 */
+private fun quickModelOptions(settings: AiSettings): List<String> {
+    val provider = if (settings.sourceMode == AiSourceMode.EXPERIENCE) {
+        CustomAiProvider.GLM
+    } else {
+        settings.customProvider
+    }
+    return (CustomAiProvider.modelPresets(provider) + settings.modelId)
+        .filter { it.isNotBlank() }
+        .distinct()
 }

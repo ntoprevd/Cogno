@@ -11,17 +11,23 @@ class AiSettingsStore(context: Context) {
 
     fun load(): AiSettings {
         val apiKey = loadApiKey()
+        // 新安装默认进入体验模型；已有用户保存过的来源模式保持不变。
+        val sourceMode = preferences.getString(KEY_SOURCE_MODE, null)
+            ?.takeIf { it in AiSourceMode.all }
+            ?: AiSourceMode.EXPERIENCE
         return AiSettings(
-            sourceMode = preferences.getString(KEY_SOURCE_MODE, null)
-                ?.takeIf { it in AiSourceMode.all }
-                ?: AiSourceMode.CUSTOM,
+            sourceMode = sourceMode,
             customProvider = preferences.getString(KEY_CUSTOM_PROVIDER, null)
                 ?.takeIf { it in CustomAiProvider.all }
                 ?: CustomAiProvider.DEEPSEEK,
             apiBaseUrl = preferences.getString(KEY_API_BASE_URL, null)
                 ?: AiSettings.DEFAULT_API_BASE_URL,
             modelId = preferences.getString(KEY_MODEL_ID, null)
-                ?: AiSettings.DEFAULT_MODEL_ID,
+                ?: if (sourceMode == AiSourceMode.EXPERIENCE) {
+                    AiSettings.DEFAULT_EXPERIENCE_MODEL_ID
+                } else {
+                    AiSettings.DEFAULT_MODEL_ID
+                },
             apiKey = apiKey,
             systemPrompt = preferences.getString(KEY_SYSTEM_PROMPT, null)
                 ?: AiSettings.DEFAULT_SYSTEM_PROMPT,
@@ -38,15 +44,20 @@ class AiSettingsStore(context: Context) {
     fun save(settings: AiSettings) {
         val apiBaseUrl = settings.apiBaseUrl.trim().trimEnd('/')
             .ifBlank { AiSettings.DEFAULT_API_BASE_URL }
-        val modelId = settings.modelId.trim()
-            .ifBlank { AiSettings.DEFAULT_MODEL_ID }
+        val modelId = settings.modelId.trim().ifBlank {
+            if (settings.sourceMode == AiSourceMode.EXPERIENCE) {
+                AiSettings.DEFAULT_EXPERIENCE_MODEL_ID
+            } else {
+                AiSettings.DEFAULT_MODEL_ID
+            }
+        }
         val systemPrompt = settings.systemPrompt.trim()
             .ifBlank { AiSettings.DEFAULT_SYSTEM_PROMPT }
         val responseStyle = settings.responseStyle
             .takeIf { it in ResponseStylePreference.all }
             ?: ResponseStylePreference.BALANCED
         val temperature = settings.temperature.coerceIn(MIN_TEMPERATURE, MAX_TEMPERATURE)
-        val sourceMode = settings.sourceMode.takeIf { it in AiSourceMode.all } ?: AiSourceMode.CUSTOM
+        val sourceMode = settings.sourceMode.takeIf { it in AiSourceMode.all } ?: AiSourceMode.EXPERIENCE
         val customProvider = settings.customProvider.takeIf { it in CustomAiProvider.all }
             ?: CustomAiProvider.DEEPSEEK
         // Do not silently erase an existing credential if Keystore access fails.

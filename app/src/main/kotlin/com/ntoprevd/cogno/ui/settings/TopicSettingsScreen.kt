@@ -76,6 +76,8 @@ fun TopicSettingsScreen(
     val isEnglish = languagePreference == AppLanguagePreference.EN
     var editing by remember { mutableStateOf<TopicEntity?>(null) }
     var adding by remember { mutableStateOf(false) }
+    var pendingDelete by remember { mutableStateOf<TopicEntity?>(null) }
+    var resetConfirmationVisible by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) { repository.ensureDefaultTopics() }
 
@@ -106,7 +108,7 @@ fun TopicSettingsScreen(
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(onClick = { scope.launch { repository.resetTopics() } }) {
+            IconButton(onClick = { resetConfirmationVisible = true }) {
                 Icon(
                     Icons.Default.RestartAlt,
                     contentDescription = if (isEnglish) "Reset" else "恢复默认",
@@ -166,7 +168,7 @@ fun TopicSettingsScreen(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    IconButton(onClick = { scope.launch { repository.deleteTopic(topic) } }) {
+                    IconButton(onClick = { pendingDelete = topic }) {
                         Icon(
                             Icons.Default.Delete,
                             contentDescription = null,
@@ -199,6 +201,107 @@ fun TopicSettingsScreen(
                 editing = null
             }
         )
+    }
+    if (resetConfirmationVisible) {
+        TopicActionConfirmDialog(
+            isDark = isDark,
+            title = if (isEnglish) "Reset topic rules?" else "重置主题规则？",
+            message = if (isEnglish) {
+                "This restores the initial topic categories. Notes that have already been generated will not be affected. Continue?"
+            } else {
+                "此操作会将主题类别恢复为初始类别，不影响已经生成的笔记。是否继续？"
+            },
+            cancelText = if (isEnglish) "Cancel" else "取消",
+            confirmText = if (isEnglish) "Reset" else "继续重置",
+            onDismiss = { resetConfirmationVisible = false },
+            onConfirm = {
+                resetConfirmationVisible = false
+                scope.launch { repository.resetTopics() }
+            }
+        )
+    }
+    pendingDelete?.let { topic ->
+        TopicActionConfirmDialog(
+            isDark = isDark,
+            title = if (isEnglish) "Delete topic rule?" else "删除主题规则？",
+            message = if (isEnglish) {
+                "Delete \"${topic.name}\"? Generated notes will not be affected, but this action cannot be undone."
+            } else {
+                "确定删除“${topic.name}”吗？已生成的笔记不会受到影响，此操作不可撤销。"
+            },
+            cancelText = if (isEnglish) "Cancel" else "取消",
+            confirmText = if (isEnglish) "Delete" else "删除",
+            destructive = true,
+            onDismiss = { pendingDelete = null },
+            onConfirm = {
+                pendingDelete = null
+                scope.launch { repository.deleteTopic(topic) }
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TopicActionConfirmDialog(
+    isDark: Boolean,
+    title: String,
+    message: String,
+    cancelText: String,
+    confirmText: String,
+    destructive: Boolean = false,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    BasicAlertDialog(onDismissRequest = onDismiss) {
+        Surface(
+            color = if (isDark) CognoDarkSurface else Color.White,
+            shape = RoundedCornerShape(22.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 28.dp)
+                .border(1.dp, if (isDark) CognoDarkLine else CognoLine, RoundedCornerShape(22.dp))
+        ) {
+            Column(modifier = Modifier.padding(18.dp)) {
+                Text(
+                    text = title,
+                    color = if (isDark) CognoDarkText else CognoText,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = message,
+                    color = CognoMuted,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = cancelText,
+                        color = if (isDark) CognoDarkText else CognoText,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable(onClick = onDismiss)
+                            .padding(vertical = 12.dp)
+                    )
+                    Text(
+                        text = confirmText,
+                        color = Color.White,
+                        textAlign = TextAlign.Center,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(if (destructive) Color(0xFFE05650) else if (isDark) CognoDarkPrimary else CognoPrimary)
+                            .clickable(onClick = onConfirm)
+                            .padding(vertical = 12.dp)
+                    )
+                }
+            }
+        }
     }
 }
 

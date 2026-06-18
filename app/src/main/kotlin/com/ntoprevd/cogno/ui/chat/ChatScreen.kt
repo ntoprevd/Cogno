@@ -26,6 +26,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -70,11 +71,13 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PhotoLibrary
@@ -85,6 +88,8 @@ import androidx.compose.material.icons.filled.ThumbDown
 import androidx.compose.material.icons.filled.ThumbUp
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.Icon
@@ -201,9 +206,11 @@ private data class FirstRunLegalCopy(
 
 private data class ChatScreenCopy(
     val openSidebar: String,
+    val switchModel: String,
     val generateNote: String,
     val newSession: String,
     val noteStyleTitle: String,
+    val noteStyleExplanation: String,
     val conciseTitle: String,
     val conciseDescription: String,
     val concisePrompt: String,
@@ -268,9 +275,11 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
     return if (languagePreference == AppLanguagePreference.EN) {
         ChatScreenCopy(
             openSidebar = "Open sidebar",
+            switchModel = "Switch model",
             generateNote = "Generate note",
             newSession = "New chat",
             noteStyleTitle = "Choose note style",
+            noteStyleExplanation = "Generate a note from new messages in this chat for review or reflection. You can find it later in the Note Library.",
             conciseTitle = "Concise Summary",
             conciseDescription = "Keep only the core conclusions for a quick review.",
             concisePrompt = "Concise: keep only core conclusions and necessary context, without too much detail.",
@@ -342,9 +351,11 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
     } else {
         ChatScreenCopy(
             openSidebar = "打开侧边栏",
+            switchModel = "切换模型",
             generateNote = "生成笔记",
             newSession = "新建会话",
             noteStyleTitle = "选择总结风格",
+            noteStyleExplanation = "根据当前窗口新增的对话生成笔记，方便复习或回味；生成后可在笔记库查看。",
             conciseTitle = "简洁摘要",
             conciseDescription = "只保留核心结论，适合快速回顾。",
             concisePrompt = "简洁：只保留核心结论和必要背景，不展开过多细节。",
@@ -412,7 +423,48 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
                 "让对话生长成可以回看的记忆。",
                 "散开的信息，也能重新连成线。",
                 "想法不必完整，先让它被看见。",
-                "把来源片段，聚成一个清楚的主题。"
+                "把来源片段，聚成一个清楚的主题。",
+                "Good morning, good afternoon, good evening, and good night!",
+                "Let's chat!",
+                "后之览者，亦将有感于斯文。",
+                "天朗气清，惠风和畅。",
+                "仰观宇宙之大，俯察品类之盛。",
+                "弃我去者，昨日之日不可留；乱我心者，今日之日多烦忧。",
+                "天上白玉京，十二楼五城。仙人抚我顶，结发受长生。",
+                "欲穷千里目，更上一层楼。",
+                "会当凌绝顶，一览众山小。",
+                "此中有真意，欲辨已忘言。",
+                "金风玉露一相逢，便胜却人间无数。",
+                "恰似一江春水向东流",
+                "青天有月来几时？我今停杯一问之。",
+                "春风又绿江南岸，明月何时照我还？",
+                "四百年来成一梦，堪愁。",
+                "往事悠悠君莫问，回头。槛外长江空自流。",
+                "子曰：朝闻道，夕死可矣！",
+                "众里寻他千百度",
+                "江南无所有，聊赠一枝春。",
+                "斫去桂婆娑，人道是、清光更多。",
+                "指点江山，激扬文字，粪土当年万户侯。",
+                "万水千山只等闲",
+                "虎踞龙盘今胜昔，天翻地覆慨而慷。",
+                "三十八年过去，弹指一挥间。",
+                "世上无难事，只要肯登攀。",
+                "从头越，苍山如海，残阳如血。",
+                "不似春光，胜似春光。",
+                "踏遍青山人未老，风景这边独好。",
+                "为天地立心，为生民立命，为往圣继绝学，为万世开太平。",
+                "先天下之忧而忧，后天下之乐而乐。",
+                "庆历四年春，滕子京谪守巴陵郡。",
+                "安得广厦千万间，大庇天下寒士俱欢颜，风雨不动安如山。",
+                "花径不曾缘客扫，蓬门今始为君开。",
+                "人生不相见，动如参与商。",
+                "争渡，争渡，惊起一滩鸥鹭。",
+                "庭院深深深几许，云窗雾阁春迟。",
+                "世有伯乐，然后有千里马。",
+                "崇祯五年十二月",
+                "三月七日，沙湖道中遇雨。",
+                "可怜九月初三夜，露似真珠月似弓。"
+
             ),
             legacyWelcome = "把问题、灵感和碎片想法都放进来。\nCogno 会先帮你沉淀成对话，之后再整理成笔记。"
         )
@@ -422,6 +474,8 @@ private fun chatScreenCopy(languagePreference: String): ChatScreenCopy {
 @Composable
 fun ChatScreen(
     currentModelId: String,
+    modelOptions: List<String>,
+    onModelSelected: (String) -> Unit,
     languagePreference: String,
     userName: String,
     avatarUri: String,
@@ -502,13 +556,15 @@ fun ChatScreen(
             ChatTopBar(
                 isDark = isDark,
                 modelId = currentModelId,
+                modelOptions = modelOptions,
                 copy = copy,
                 onOpenDrawer = viewModel::openDrawer,
                 noteGenerationEnabled = uiState.currentSessionId != null &&
                     uiState.messages.any { it.status == "completed" } &&
                     !uiState.isGeneratingNote,
                 onGenerateNote = { noteStyleDialogVisible = true },
-                onNewSession = viewModel::startNewSession
+                onNewSession = viewModel::startNewSession,
+                onModelSelected = onModelSelected
             )
 
             Box(
@@ -781,12 +837,15 @@ private fun attachmentDisplayName(context: android.content.Context, uri: Uri): S
 private fun ChatTopBar(
     isDark: Boolean,
     modelId: String,
+    modelOptions: List<String>,
     copy: ChatScreenCopy,
     onOpenDrawer: () -> Unit,
     noteGenerationEnabled: Boolean,
     onGenerateNote: () -> Unit,
-    onNewSession: () -> Unit
+    onNewSession: () -> Unit,
+    onModelSelected: (String) -> Unit
 ) {
+    var modelMenuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -815,26 +874,83 @@ private fun ChatTopBar(
                 fontSize = 18.sp,
                 letterSpacing = 0.sp
             )
-            Text(
-                text = modelId.ifBlank { "Model" },
-                color = if (isDark) CognoDarkPrimary else CognoPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 9.sp,
-                lineHeight = 9.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .padding(start = 7.dp)
-                    .widthIn(max = 130.dp)
-                    .clip(RoundedCornerShape(4.dp))
-                    .background((if (isDark) CognoDarkPrimary else CognoPrimary).copy(alpha = 0.11f))
-                    .border(
-                        width = 1.dp,
-                        color = (if (isDark) CognoDarkPrimary else CognoPrimary).copy(alpha = 0.14f),
-                        shape = RoundedCornerShape(4.dp)
+            Box(modifier = Modifier.padding(start = 7.dp)) {
+                Row(
+                    modifier = Modifier
+                        .widthIn(max = 146.dp)
+                        .clip(RoundedCornerShape(7.dp))
+                        .background((if (isDark) CognoDarkPrimary else CognoPrimary).copy(alpha = 0.10f))
+                        .border(
+                            width = 1.dp,
+                            color = (if (isDark) CognoDarkPrimary else CognoPrimary).copy(alpha = 0.18f),
+                            shape = RoundedCornerShape(7.dp)
+                        )
+                        .clickable { modelMenuExpanded = true }
+                        .padding(start = 7.dp, end = 3.dp, top = 3.dp, bottom = 3.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = modelId.ifBlank { "Model" },
+                        color = if (isDark) CognoDarkPrimary else CognoPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
+                        lineHeight = 10.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
                     )
-                    .padding(horizontal = 6.dp, vertical = 3.dp)
-            )
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = copy.switchModel,
+                        tint = if (isDark) CognoDarkPrimary else CognoPrimary,
+                        modifier = Modifier.size(15.dp)
+                    )
+                }
+                DropdownMenu(
+                    expanded = modelMenuExpanded,
+                    onDismissRequest = { modelMenuExpanded = false },
+                    modifier = Modifier.width(184.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    containerColor = if (isDark) CognoDarkSurface else Color.White,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 7.dp,
+                    border = BorderStroke(1.dp, if (isDark) CognoDarkLine else CognoLine)
+                ) {
+                    modelOptions.forEach { option ->
+                        DropdownMenuItem(
+                            text = {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = option,
+                                        color = if (isDark) CognoDarkText else CognoText,
+                                        fontSize = 13.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    if (option == modelId) {
+                                        Icon(
+                                            Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = if (isDark) CognoDarkPrimary else CognoPrimary,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 13.dp, vertical = 0.dp),
+                            modifier = Modifier.height(42.dp),
+                            onClick = {
+                                modelMenuExpanded = false
+                                if (option != modelId) onModelSelected(option)
+                            }
+                        )
+                    }
+                }
+            }
         }
 
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -930,6 +1046,13 @@ private fun NoteStyleDialog(
                     color = if (isDark) CognoDarkText else CognoText,
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                Text(
+                    text = copy.noteStyleExplanation,
+                    color = CognoMuted,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 NoteStyleAction(copy.conciseTitle, copy.conciseDescription, isDark) {

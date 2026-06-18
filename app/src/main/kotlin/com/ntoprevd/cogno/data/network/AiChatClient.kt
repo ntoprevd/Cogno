@@ -64,7 +64,7 @@ class AiChatClient(context: Context) {
                 ?.trim()
                 .orEmpty()
             if (content.isBlank()) {
-                throw AiChatException("AI 返回内容为空")
+                throw AiEmptyContentException()
             }
 
             val usage = json.optJSONObject("usage")
@@ -114,7 +114,7 @@ class AiChatClient(context: Context) {
 
             val content = contentBuilder.toString().trim()
             if (content.isBlank()) {
-                throw AiChatException("AI 返回内容为空")
+                throw AiEmptyContentException()
             }
                 AiChatResponse(content = content, totalTokens = totalTokens)
             }
@@ -317,11 +317,9 @@ class AiChatClient(context: Context) {
         }
 
         val isGlmModel = settings.modelId.startsWith("glm-", ignoreCase = true)
-        val isKnownTextOnlyModel = settings.sourceMode == AiSourceMode.CUSTOM &&
-            (
-                settings.customProvider == CustomAiProvider.DEEPSEEK ||
-                    (isGlmModel && !isGlmVisionModel(settings.modelId))
-                )
+        val isKnownTextOnlyModel =
+            (settings.sourceMode == AiSourceMode.CUSTOM && settings.customProvider == CustomAiProvider.DEEPSEEK) ||
+                (isGlmModel && !isGlmVisionModel(settings.modelId))
         if (!includeImage || isKnownTextOnlyModel) {
             // 历史图片和已知文本模型都只保留文字上下文，避免发送必然失败的 image_url。
             return listOf("[图片消息]", message.content)
@@ -740,6 +738,9 @@ data class ExperienceModel(
 )
 
 class AiChatException(message: String, cause: Throwable? = null) : IOException(message, cause)
+
+/** 上游请求成功但没有返回任何可展示正文；仅此异常允许聊天层做一次安全重试。 */
+class AiEmptyContentException : IOException("AI 返回内容为空")
 
 class AiRequestCancelledException : IOException("Generation cancelled")
 

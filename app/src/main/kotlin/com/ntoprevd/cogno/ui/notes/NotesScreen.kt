@@ -11,12 +11,14 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,11 +42,15 @@ import androidx.compose.material.icons.filled.ArrowBackIosNew
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.IosShare
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.BasicAlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -215,6 +221,7 @@ private data class NotesScreenCopy(
     val topicModeTitle: String,
     val switchToTopicMode: String,
     val switchToConversationMode: String,
+    val manageTopics: String,
     val searchPlaceholder: String,
     val topicSearchPlaceholder: String,
     val emptyNotes: String,
@@ -256,11 +263,12 @@ private fun notesScreenCopy(languagePreference: String): NotesScreenCopy {
             switchMode = "Switch category mode",
             conversationModeTitle = "NoteLibrary",
             topicModeTitle = "Topics",
-            switchToTopicMode = "Switch to topic mode",
-            switchToConversationMode = "Switch to conversation mode",
+            switchToTopicMode = "Topic notes",
+            switchToConversationMode = "Conversation notes",
+            manageTopics = "Manage topics",
             searchPlaceholder = "Search note titles or content...",
             topicSearchPlaceholder = "Search topics or fragments...",
-            emptyNotes = "No notes yet. Generate one from a chat using the top feather button.",
+            emptyNotes = "No notes yet. Use the magic wand at the top right of a chat to generate one.",
             noNotesFound = "No matching notes.",
             emptyTopics = "No topic fragments yet. Generate or update notes first.",
             noTopicsFound = "No matching topics.",
@@ -295,13 +303,14 @@ private fun notesScreenCopy(languagePreference: String): NotesScreenCopy {
             back = "返回",
             searchNotes = "搜索笔记",
             switchMode = "切换分类模式",
-            conversationModeTitle = "NoteLibrary",
+            conversationModeTitle = "笔记库",
             topicModeTitle = "主题笔记",
-            switchToTopicMode = "切换到主题模式",
-            switchToConversationMode = "切换到对话模式",
+            switchToTopicMode = "主题笔记",
+            switchToConversationMode = "对话笔记",
+            manageTopics = "管理主题",
             searchPlaceholder = "搜索笔记标题或内容...",
             topicSearchPlaceholder = "搜索主题或片段...",
-            emptyNotes = "暂无笔记，先在会话中点击顶部羽毛生成。",
+            emptyNotes = "暂无笔记，先在聊天页点击顶栏右侧魔法棒生成。",
             noNotesFound = "没有找到相关笔记。",
             emptyTopics = "暂无可归类的主题片段，先生成或更新一些笔记。",
             noTopicsFound = "没有找到相关主题。",
@@ -339,6 +348,7 @@ fun NotesScreen(
     languagePreference: String,
     onBack: () -> Unit,
     onOpenNote: (String) -> Unit,
+    onOpenTopicSettings: () -> Unit,
     viewModel: NotesViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
@@ -423,7 +433,8 @@ fun NotesScreen(
                     topicMode = !topicMode
                     searchKeyword = ""
                     selectedTopic = null
-                }
+                },
+                onOpenTopicSettings = onOpenTopicSettings
             )
             NoteSearchBar(
                 expanded = searchExpanded,
@@ -606,8 +617,10 @@ private fun NotesTopBar(
     topicMode: Boolean,
     onBack: () -> Unit,
     onToggleSearch: () -> Unit,
-    onToggleMode: () -> Unit
+    onToggleMode: () -> Unit,
+    onOpenTopicSettings: () -> Unit
 ) {
+    var menuExpanded by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -640,16 +653,71 @@ private fun NotesTopBar(
                     tint = if (isDark) CognoDarkPrimary else CognoPrimary
                 )
             }
-            IconButton(onClick = onToggleMode) {
-                Icon(
-                    imageVector = Icons.Default.SwapHoriz,
-                    contentDescription = if (topicMode) copy.switchToConversationMode else copy.switchToTopicMode,
-                    tint = if (topicMode) {
-                        if (isDark) CognoDarkText else CognoText
-                    } else {
-                        if (isDark) CognoDarkPrimary else CognoPrimary
-                    }
-                )
+            Box {
+                IconButton(onClick = { menuExpanded = true }) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = copy.switchMode,
+                        tint = if (isDark) CognoDarkPrimary else CognoPrimary
+                    )
+                }
+                DropdownMenu(
+                    expanded = menuExpanded,
+                    onDismissRequest = { menuExpanded = false },
+                    modifier = Modifier.width(156.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    containerColor = if (isDark) CognoDarkSurface else Color.White,
+                    tonalElevation = 0.dp,
+                    shadowElevation = 7.dp,
+                    border = BorderStroke(1.dp, if (isDark) CognoDarkLine else CognoLine)
+                ) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (topicMode) copy.switchToConversationMode else copy.switchToTopicMode,
+                                color = if (isDark) CognoDarkText else CognoText,
+                                fontSize = 14.sp
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.SwapHoriz,
+                                contentDescription = null,
+                                tint = CognoMuted,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 13.dp, vertical = 0.dp),
+                        modifier = Modifier.height(44.dp),
+                        onClick = {
+                            menuExpanded = false
+                            onToggleMode()
+                        }
+                    )
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                copy.manageTopics,
+                                color = if (isDark) CognoDarkText else CognoText,
+                                fontSize = 14.sp
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                Icons.Default.Settings,
+                                contentDescription = null,
+                                tint = CognoMuted,
+                                modifier = Modifier.size(17.dp)
+                            )
+                        },
+                        contentPadding = PaddingValues(horizontal = 13.dp, vertical = 0.dp),
+                        modifier = Modifier.height(44.dp),
+                        onClick = {
+                            menuExpanded = false
+                            onOpenTopicSettings()
+                        }
+                    )
+                }
             }
         }
     }
